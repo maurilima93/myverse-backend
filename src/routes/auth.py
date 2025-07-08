@@ -1,65 +1,95 @@
+# Adicione estas rotas ao seu arquivo auth.py no backend
+
 from flask import Blueprint, request, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from src.models.database import db, User, UserPreference
+from src.models.database import db, User
 import re
 
 auth_bp = Blueprint('auth', __name__)
-
-def validate_email(email):
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def validate_password(password):
-    return len(password) >= 6
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
         
+        # Validação dos dados
         if not data:
             return jsonify({'error': 'Dados não fornecidos'}), 400
-        
+            
         username = data.get('username', '').strip()
-        email = data.get('email', '').strip().lower()
+        email = data.get('email', '').strip()
         password = data.get('password', '')
         
         # Validações
-        if not username or len(username) < 3:
-            return jsonify({'error': 'Nome de usuário deve ter pelo menos 3 caracteres'}), 400
-        
-        if not validate_email(email):
+        if not username or not email or not password:
+            return jsonify({'error': 'Username, email e password são obrigatórios'}), 400
+            
+        # Validar username
+        if len(username) < 3 or len(username) > 20:
+            return jsonify({'error': 'Username deve ter entre 3 e 20 caracteres'}), 400
+            
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            return jsonify({'error': 'Username pode conter apenas letras, números e underscore'}), 400
+            
+        # Validar email
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, email):
             return jsonify({'error': 'Email inválido'}), 400
-        
-        if not validate_password(password):
-            return jsonify({'error': 'Senha deve ter pelo menos 6 caracteres'}), 400
+            
+        # Validar password
+        if len(password) < 8:
+            return jsonify({'error': 'Password deve ter pelo menos 8 caracteres'}), 400
+            
+        if not re.search(r'[A-Z]', password):
+            return jsonify({'error': 'Password deve ter pelo menos uma letra maiúscula'}), 400
+            
+        if not re.search(r'[a-z]', password):
+            return jsonify({'error': 'Password deve ter pelo menos uma letra minúscula'}), 400
+            
+        if not re.search(r'\d', password):
+            return jsonify({'error': 'Password deve ter pelo menos um número'}), 400
         
         # Verificar se usuário já existe
-        if User.query.filter_by(username=username).first():
-            return jsonify({'error': 'Nome de usuário já existe'}), 400
+        existing_user = User.query.filter(
+            (User.username == username) | (User.email == email)
+        ).first()
         
-        if User.query.filter_by(email=email).first():
-            return jsonify({'error': 'Email já cadastrado'}), 400
+        if existing_user:
+            if existing_user.username == username:
+                return jsonify({'error': 'Username já está em uso'}), 409
+            else:
+                return jsonify({'error': 'Email já está em uso'}), 409
         
-        # Criar usuário
-        user = User(username=username, email=email)
-        user.set_password(password)
+        # Criar novo usuário
+        password_hash = generate_password_hash(password)
         
-        db.session.add(user)
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=password_hash
+        )
+        
+        db.session.add(new_user)
         db.session.commit()
         
         # Criar token de acesso
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=new_user.id)
         
         return jsonify({
             'message': 'Usuário criado com sucesso',
-            'access_token': access_token,
-            'user': user.to_dict()
+            'user': {
+                'id': new_user.id,
+                'username': new_user.username,
+                'email': new_user.email
+            },
+            'access_token': access_token
         }), 201
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+        print(f"Erro no registro: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -68,125 +98,55 @@ def login():
         
         if not data:
             return jsonify({'error': 'Dados não fornecidos'}), 400
-        
-        email = data.get('email', '').strip().lower()
+            
+        email = data.get('email', '').strip()
         password = data.get('password', '')
         
         if not email or not password:
-            return jsonify({'error': 'Email e senha são obrigatórios'}), 400
+            return jsonify({'error': 'Email e password são obrigatórios'}), 400
         
         # Buscar usuário
         user = User.query.filter_by(email=email).first()
         
-        if not user or not user.check_password(password):
-            return jsonify({'error': 'Email ou senha incorretos'}), 401
-        
-        if not user.is_active:
-            return jsonify({'error': 'Conta desativada'}), 401
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({'error': 'Email ou password incorretos'}), 401
         
         # Criar token de acesso
         access_token = create_access_token(identity=user.id)
         
         return jsonify({
             'message': 'Login realizado com sucesso',
-            'access_token': access_token,
-            'user': user.to_dict()
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email
+            },
+            'access_token': access_token
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+        print(f"Erro no login: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
-@auth_bp.route('/profile', methods=['GET'])
+@auth_bp.route('/me', methods=['GET'])
 @jwt_required()
-def get_profile():
+def get_current_user():
     try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
         
         if not user:
             return jsonify({'error': 'Usuário não encontrado'}), 404
-        
-        # Buscar preferências do usuário
-        preferences = UserPreference.query.filter_by(user_id=user_id).first()
-        
-        profile_data = user.to_dict()
-        if preferences:
-            profile_data['preferences'] = preferences.to_dict()
-        
-        return jsonify(profile_data), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
-
-@auth_bp.route('/profile', methods=['PUT'])
-@jwt_required()
-def update_profile():
-    try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify({'error': 'Usuário não encontrado'}), 404
-        
-        data = request.get_json()
-        
-        # Atualizar dados básicos se fornecidos
-        if 'username' in data:
-            username = data['username'].strip()
-            if len(username) >= 3:
-                # Verificar se username já existe (exceto o atual)
-                existing = User.query.filter(User.username == username, User.id != user_id).first()
-                if not existing:
-                    user.username = username
-        
-        if 'email' in data:
-            email = data['email'].strip().lower()
-            if validate_email(email):
-                # Verificar se email já existe (exceto o atual)
-                existing = User.query.filter(User.email == email, User.id != user_id).first()
-                if not existing:
-                    user.email = email
-        
-        db.session.commit()
         
         return jsonify({
-            'message': 'Perfil atualizado com sucesso',
-            'user': user.to_dict()
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email
+            }
         }), 200
         
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
-
-@auth_bp.route('/change-password', methods=['POST'])
-@jwt_required()
-def change_password():
-    try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify({'error': 'Usuário não encontrado'}), 404
-        
-        data = request.get_json()
-        current_password = data.get('current_password', '')
-        new_password = data.get('new_password', '')
-        
-        if not current_password or not new_password:
-            return jsonify({'error': 'Senha atual e nova senha são obrigatórias'}), 400
-        
-        if not user.check_password(current_password):
-            return jsonify({'error': 'Senha atual incorreta'}), 401
-        
-        if not validate_password(new_password):
-            return jsonify({'error': 'Nova senha deve ter pelo menos 6 caracteres'}), 400
-        
-        user.set_password(new_password)
-        db.session.commit()
-        
-        return jsonify({'message': 'Senha alterada com sucesso'}), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+        print(f"Erro ao buscar usuário: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
