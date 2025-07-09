@@ -1,168 +1,149 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, UserPreference, UserFavorite
+from src.models.database import db, User, Favorite
 from src.services.tmdb_service import TMDbService
 from src.services.igdb_service import IGDBService
 
 content_bp = Blueprint('content', __name__)
 
-# Inicializar serviços
-tmdb_service = TMDbService()
-igdb_service = IGDBService()
-
 @content_bp.route('/search', methods=['GET'])
 def search_content():
     try:
         query = request.args.get('q', '').strip()
-        content_type = request.args.get('type', 'all')  # all, movie, tv, game
         
         if not query:
-            return jsonify({'error': 'Query de pesquisa é obrigatória'}), 400
+            return jsonify({'error': 'Query parameter "q" is required'}), 400
+        
+        if len(query) < 2:
+            return jsonify({'error': 'Query must be at least 2 characters'}), 400
+        
+        # Inicializar serviços
+        tmdb_service = TMDbService()
+        igdb_service = IGDBService()
         
         results = []
         
-        if content_type in ['all', 'movie']:
-            # Buscar filmes
+        # Buscar filmes
+        try:
             movies = tmdb_service.search_movies(query)
-            results.extend(movies)
+            for movie in movies:
+                results.append({
+                    'id': str(movie.get('id')),
+                    'title': movie.get('title', 'N/A'),
+                    'type': 'movie',
+                    'poster_url': tmdb_service.get_poster_url(movie.get('poster_path')),
+                    'rating': movie.get('vote_average', 0),
+                    'year': movie.get('release_date', '')[:4] if movie.get('release_date') else '',
+                    'overview': movie.get('overview', ''),
+                    'genres': [genre['name'] for genre in movie.get('genres', [])] if movie.get('genres') else []
+                })
+        except Exception as e:
+            print(f"Erro ao buscar filmes: {e}")
         
-        if content_type in ['all', 'tv']:
-            # Buscar séries
+        # Buscar séries
+        try:
             tv_shows = tmdb_service.search_tv_shows(query)
-            results.extend(tv_shows)
+            for show in tv_shows:
+                results.append({
+                    'id': str(show.get('id')),
+                    'title': show.get('name', 'N/A'),
+                    'type': 'tv',
+                    'poster_url': tmdb_service.get_poster_url(show.get('poster_path')),
+                    'rating': show.get('vote_average', 0),
+                    'year': show.get('first_air_date', '')[:4] if show.get('first_air_date') else '',
+                    'overview': show.get('overview', ''),
+                    'genres': [genre['name'] for genre in show.get('genres', [])] if show.get('genres') else []
+                })
+        except Exception as e:
+            print(f"Erro ao buscar séries: {e}")
         
-        if content_type in ['all', 'game']:
-            # Buscar jogos
+        # Buscar jogos
+        try:
             games = igdb_service.search_games(query)
-            results.extend(games)
+            for game in games:
+                results.append({
+                    'id': str(game.get('id')),
+                    'title': game.get('name', 'N/A'),
+                    'type': 'game',
+                    'poster_url': igdb_service.get_cover_url(game.get('cover')),
+                    'rating': game.get('rating', 0) / 10 if game.get('rating') else 0,  # IGDB usa 0-100
+                    'year': str(game.get('first_release_date', '')[:4]) if game.get('first_release_date') else '',
+                    'overview': game.get('summary', ''),
+                    'genres': [genre['name'] for genre in game.get('genres', [])] if game.get('genres') else [],
+                    'platforms': [platform['name'] for platform in game.get('platforms', [])] if game.get('platforms') else []
+                })
+        except Exception as e:
+            print(f"Erro ao buscar jogos: {e}")
+        
+        # Ordenar por relevância (rating)
+        results.sort(key=lambda x: x.get('rating', 0), reverse=True)
         
         return jsonify({
-            'query': query,
             'results': results,
-            'total': len(results)
+            'total': len(results),
+            'query': query
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro na pesquisa: {str(e)}'}), 500
-
-@content_bp.route('/trending', methods=['GET'])
-def get_trending():
-    try:
-        content_type = request.args.get('type', 'all')
-        
-        trending = []
-        
-        if content_type in ['all', 'movie']:
-            movies = tmdb_service.get_trending_movies()
-            trending.extend(movies)
-        
-        if content_type in ['all', 'tv']:
-            tv_shows = tmdb_service.get_trending_tv_shows()
-            trending.extend(tv_shows)
-        
-        if content_type in ['all', 'game']:
-            games = igdb_service.get_popular_games()
-            trending.extend(games)
-        
-        return jsonify({
-            'trending': trending,
-            'total': len(trending)
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Erro ao buscar tendências: {str(e)}'}), 500
-
-@content_bp.route('/recommendations', methods=['GET'])
-@jwt_required()
-def get_recommendations():
-    try:
-        user_id = get_jwt_identity()
-        
-        # Buscar preferências do usuário
-        preferences = UserPreference.query.filter_by(user_id=user_id).first()
-        
-        if not preferences:
-            # Se não tem preferências, retornar conteúdo popular
-            return get_trending()
-        
-        categories = preferences.get_categories()
-        genres = preferences.get_genres()
-        
-        recommendations = []
-        
-        # Recomendações baseadas em categorias e gêneros
-        if 'movies' in categories:
-            movies = tmdb_service.get_movies_by_genres(genres)
-            recommendations.extend(movies)
-        
-        if 'tv' in categories:
-            tv_shows = tmdb_service.get_tv_shows_by_genres(genres)
-            recommendations.extend(tv_shows)
-        
-        if 'games' in categories:
-            games = igdb_service.get_games_by_genres(genres)
-            recommendations.extend(games)
-        
-        return jsonify({
-            'recommendations': recommendations,
-            'based_on': {
-                'categories': categories,
-                'genres': genres
-            },
-            'total': len(recommendations)
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Erro ao buscar recomendações: {str(e)}'}), 500
+        print(f"Erro na busca: {e}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 @content_bp.route('/favorites', methods=['GET'])
 @jwt_required()
 def get_favorites():
     try:
-        user_id = get_jwt_identity()
+        current_user_id = get_jwt_identity()
         
-        favorites = UserFavorite.query.filter_by(user_id=user_id).order_by(UserFavorite.added_at.desc()).all()
+        favorites = Favorite.query.filter_by(user_id=current_user_id).order_by(Favorite.created_at.desc()).all()
         
         return jsonify({
-            'favorites': [fav.to_dict() for fav in favorites],
-            'total': len(favorites)
+            'favorites': [fav.to_dict() for fav in favorites]
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro ao buscar favoritos: {str(e)}'}), 500
+        print(f"Erro ao buscar favoritos: {e}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 @content_bp.route('/favorites', methods=['POST'])
 @jwt_required()
 def add_favorite():
     try:
-        user_id = get_jwt_identity()
+        current_user_id = get_jwt_identity()
         data = request.get_json()
         
-        content_type = data.get('content_type')
+        if not data:
+            return jsonify({'error': 'Dados não fornecidos'}), 400
+        
         content_id = data.get('content_id')
+        content_type = data.get('content_type')
         title = data.get('title')
         poster_url = data.get('poster_url')
+        rating = data.get('rating')
         
-        if not all([content_type, content_id, title]):
-            return jsonify({'error': 'Dados obrigatórios: content_type, content_id, title'}), 400
+        if not all([content_id, content_type, title]):
+            return jsonify({'error': 'content_id, content_type e title são obrigatórios'}), 400
+        
+        if content_type not in ['movie', 'tv', 'game']:
+            return jsonify({'error': 'content_type deve ser movie, tv ou game'}), 400
         
         # Verificar se já existe
-        existing = UserFavorite.query.filter_by(
-            user_id=user_id,
-            content_type=content_type,
-            content_id=content_id
+        existing = Favorite.query.filter_by(
+            user_id=current_user_id,
+            content_id=content_id,
+            content_type=content_type
         ).first()
         
         if existing:
-            return jsonify({'error': 'Item já está nos favoritos'}), 400
+            return jsonify({'error': 'Item já está nos favoritos'}), 409
         
-        # Adicionar aos favoritos
-        favorite = UserFavorite(
-            user_id=user_id,
-            content_type=content_type,
+        # Criar novo favorito
+        favorite = Favorite(
+            user_id=current_user_id,
             content_id=content_id,
+            content_type=content_type,
             title=title,
-            poster_url=poster_url
+            poster_url=poster_url,
+            rating=rating
         )
         
         db.session.add(favorite)
@@ -175,15 +156,19 @@ def add_favorite():
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro ao adicionar favorito: {str(e)}'}), 500
+        print(f"Erro ao adicionar favorito: {e}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 @content_bp.route('/favorites/<int:favorite_id>', methods=['DELETE'])
 @jwt_required()
 def remove_favorite(favorite_id):
     try:
-        user_id = get_jwt_identity()
+        current_user_id = get_jwt_identity()
         
-        favorite = UserFavorite.query.filter_by(id=favorite_id, user_id=user_id).first()
+        favorite = Favorite.query.filter_by(
+            id=favorite_id,
+            user_id=current_user_id
+        ).first()
         
         if not favorite:
             return jsonify({'error': 'Favorito não encontrado'}), 404
@@ -195,27 +180,71 @@ def remove_favorite(favorite_id):
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro ao remover favorito: {str(e)}'}), 500
+        print(f"Erro ao remover favorito: {e}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
-@content_bp.route('/details/<content_type>/<content_id>', methods=['GET'])
-def get_content_details(content_type, content_id):
+@content_bp.route('/trending', methods=['GET'])
+def get_trending():
     try:
-        details = None
+        tmdb_service = TMDbService()
+        igdb_service = IGDBService()
         
-        if content_type == 'movie':
-            details = tmdb_service.get_movie_details(content_id)
-        elif content_type == 'tv':
-            details = tmdb_service.get_tv_show_details(content_id)
-        elif content_type == 'game':
-            details = igdb_service.get_game_details(content_id)
-        else:
-            return jsonify({'error': 'Tipo de conteúdo inválido'}), 400
+        results = []
         
-        if not details:
-            return jsonify({'error': 'Conteúdo não encontrado'}), 404
+        # Filmes em alta
+        try:
+            trending_movies = tmdb_service.get_trending_movies()
+            for movie in trending_movies[:5]:  # Limitar a 5
+                results.append({
+                    'id': str(movie.get('id')),
+                    'title': movie.get('title', 'N/A'),
+                    'type': 'movie',
+                    'poster_url': tmdb_service.get_poster_url(movie.get('poster_path')),
+                    'rating': movie.get('vote_average', 0),
+                    'year': movie.get('release_date', '')[:4] if movie.get('release_date') else '',
+                    'overview': movie.get('overview', '')
+                })
+        except Exception as e:
+            print(f"Erro ao buscar filmes em alta: {e}")
         
-        return jsonify(details), 200
+        # Séries em alta
+        try:
+            trending_tv = tmdb_service.get_trending_tv()
+            for show in trending_tv[:5]:  # Limitar a 5
+                results.append({
+                    'id': str(show.get('id')),
+                    'title': show.get('name', 'N/A'),
+                    'type': 'tv',
+                    'poster_url': tmdb_service.get_poster_url(show.get('poster_path')),
+                    'rating': show.get('vote_average', 0),
+                    'year': show.get('first_air_date', '')[:4] if show.get('first_air_date') else '',
+                    'overview': show.get('overview', '')
+                })
+        except Exception as e:
+            print(f"Erro ao buscar séries em alta: {e}")
+        
+        # Jogos populares
+        try:
+            popular_games = igdb_service.get_popular_games()
+            for game in popular_games[:5]:  # Limitar a 5
+                results.append({
+                    'id': str(game.get('id')),
+                    'title': game.get('name', 'N/A'),
+                    'type': 'game',
+                    'poster_url': igdb_service.get_cover_url(game.get('cover')),
+                    'rating': game.get('rating', 0) / 10 if game.get('rating') else 0,
+                    'year': str(game.get('first_release_date', '')[:4]) if game.get('first_release_date') else '',
+                    'overview': game.get('summary', '')
+                })
+        except Exception as e:
+            print(f"Erro ao buscar jogos populares: {e}")
+        
+        return jsonify({
+            'trending': results,
+            'total': len(results)
+        }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro ao buscar detalhes: {str(e)}'}), 500
+        print(f"Erro ao buscar conteúdo em alta: {e}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
