@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, UserPreference, UserFavorite
+from src.models.database import db, UserPreference, Favorite
 from src.services.tmdb_service import TMDbService
 from src.services.igdb_service import IGDBService
 
@@ -121,7 +121,7 @@ def get_favorites():
     try:
         user_id = get_jwt_identity()
         
-        favorites = UserFavorite.query.filter_by(user_id=user_id).order_by(UserFavorite.added_at.desc()).all()
+        favorites = Favorite.query.filter_by(user_id=user_id).order_by(Favorite.created_at.desc()).all()
         
         return jsonify({
             'favorites': [fav.to_dict() for fav in favorites],
@@ -147,7 +147,7 @@ def add_favorite():
             return jsonify({'error': 'Dados obrigatórios: content_type, content_id, title'}), 400
         
         # Verificar se já existe
-        existing = UserFavorite.query.filter_by(
+        existing = Favorite.query.filter_by(
             user_id=user_id,
             content_type=content_type,
             content_id=content_id
@@ -157,7 +157,7 @@ def add_favorite():
             return jsonify({'error': 'Item já está nos favoritos'}), 400
         
         # Adicionar aos favoritos
-        favorite = UserFavorite(
+        favorite = Favorite(
             user_id=user_id,
             content_type=content_type,
             content_id=content_id,
@@ -183,7 +183,7 @@ def remove_favorite(favorite_id):
     try:
         user_id = get_jwt_identity()
         
-        favorite = UserFavorite.query.filter_by(id=favorite_id, user_id=user_id).first()
+        favorite = Favorite.query.filter_by(id=favorite_id, user_id=user_id).first()
         
         if not favorite:
             return jsonify({'error': 'Favorito não encontrado'}), 404

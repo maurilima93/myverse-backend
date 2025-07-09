@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, User, UserPreference
+from src.models.database import db, User, UserPreference, Favorite
 from datetime import datetime
 
 user_bp = Blueprint('user', __name__)
@@ -95,8 +95,8 @@ def get_user_stats():
         # Estatísticas do usuário
         stats = {
             'favorites_count': len(user.favorites),
-            'posts_count': len(user.posts),
-            'comments_count': len(user.comments),
+            'posts_count': len(user.forum_posts),
+            'comments_count': len(user.forum_replies),
             'member_since': user.created_at.isoformat() if user.created_at else None
         }
 
@@ -112,7 +112,7 @@ def get_user_stats():
             'user': user.to_dict(),
             'stats': stats
         }), 200
-        except Exception as e:
+    except Exception as e:
         return jsonify({'error': f'Erro ao buscar estatísticas: {str(e)}'}), 500
 @user_bp.route('/onboarding-complete', methods=['POST'])
 @jwt_required()
@@ -135,17 +135,17 @@ def complete_onboarding():
         preferences.set_genres(genres)
         preferences.updated_at = datetime.utcnow()
         # Adicionar conteúdo selecionado aos favoritos
-        from src.models.database import UserFavorite
+        from src.models.database import Favorite
         for content in selected_content:
             # Verificar se já existe
-            existing = UserFavorite.query.filter_by(
+            existing = Favorite.query.filter_by(
                 user_id=user_id,
                 content_type=content.get('type'),
                 content_id=content.get('id')
             ).first()
             
             if not existing:
-                favorite = UserFavorite(
+                favorite = Favorite(
                     user_id=user_id,
                     content_type=content.get('type'),
                     content_id=content.get('id'),

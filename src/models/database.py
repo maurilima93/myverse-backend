@@ -111,3 +111,42 @@ class ForumReply(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
+
+
+
+class UserPreference(db.Model):
+    __tablename__ = 'user_preferences'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    preferred_categories = db.Column(db.String(255), default='')  # 'movies,tv,games'
+    preferred_genres = db.Column(db.String(255), default='')  # 'action,comedy'
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('preference', uselist=False))
+
+    def __repr__(self):
+        return f'<UserPreference for User {self.user_id}>'
+
+    def get_categories(self):
+        return [cat.strip() for cat in self.preferred_categories.split(',') if cat.strip()]
+
+    def set_categories(self, categories):
+        self.preferred_categories = ','.join(categories)
+
+    def get_genres(self):
+        return [genre.strip() for genre in self.preferred_genres.split(',') if genre.strip()]
+
+    def set_genres(self, genres):
+        self.preferred_genres = ','.join(genres)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'preferred_categories': self.get_categories(),
+            'preferred_genres': self.get_genres(),
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
