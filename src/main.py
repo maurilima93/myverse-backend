@@ -24,7 +24,7 @@ def create_app():
         # Configuração para AWS RDS
         db_host = os.getenv('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')
         db_port = os.getenv('DB_PORT', '5432')
-        db_name = os.getenv('DB_NAME', 'personal-feed')
+        db_name = os.getenv('DB_NAME', 'postgres')
         db_user = os.getenv('DB_USER', 'admin1')
         db_password = os.getenv('DB_PASSWORD', 'EsNvDJNCydIdbKXcAZy5')
         
