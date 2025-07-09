@@ -58,11 +58,13 @@ def create_app():
     from src.routes.content import content_bp
     from src.routes.user import user_bp
     from src.routes.forum import forum_bp
+    from src.routes.news import news_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(content_bp, url_prefix='/api/content')
     app.register_blueprint(user_bp, url_prefix='/api/user')
     app.register_blueprint(forum_bp, url_prefix='/api/forum')
+    app.register_blueprint(news_bp, url_prefix='/api/news')
     
     # Rota de health check
     @app.route('/health')
