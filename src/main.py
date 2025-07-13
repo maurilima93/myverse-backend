@@ -6,6 +6,15 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from src.models.database import db, User, Favorite, ForumPost, ForumReply
 
+@app.before_request
+def handle_options():
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'preflight'})
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
+
 def create_app():
     app = Flask(__name__)
     
@@ -63,6 +72,14 @@ def create_app():
     from src.routes.user import user_bp
     from src.routes.forum import forum_bp
     from src.routes.news import news_bp
+    
+    @app.before_request
+    def handle_options():
+        if request.method == 'OPTIONS':
+            response = jsonify({'status': 'preflight'})
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+            return response
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(content_bp, url_prefix='/api/content')

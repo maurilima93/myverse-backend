@@ -10,14 +10,6 @@ content_bp = Blueprint('content', __name__)
 tmdb_service = TMDbService()
 igdb_service = IGDBService()
 
-@content_bp.before_request
-def handle_options():
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'preflight'})
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        return response
-
 @content_bp.route('/search', methods=['GET'])
 def search_content():
     try:
