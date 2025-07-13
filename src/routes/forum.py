@@ -4,6 +4,14 @@ from src.models.database import db, User, ForumPost, ForumReply
 
 forum_bp = Blueprint('forum', __name__)
 
+@content_bp.before_request
+def handle_options():
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'preflight'})
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
 @forum_bp.route('/posts', methods=['GET'])
 def get_posts():
     try:

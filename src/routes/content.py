@@ -10,6 +10,14 @@ content_bp = Blueprint('content', __name__)
 tmdb_service = TMDbService()
 igdb_service = IGDBService()
 
+@content_bp.before_request
+def handle_options():
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'preflight'})
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
 @content_bp.route('/search', methods=['GET'])
 def search_content():
     try:
@@ -140,10 +148,23 @@ def get_favorites():
 def add_favorite():
     try:
         user_id = get_jwt_identity()
+        
+        # Verifique se o conteúdo é JSON
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON"}), 415
+            
         data = request.get_json()
         
-        if not data:
-            return jsonify({'error': 'Dados não fornecidos'}), 400
+        # Validação mais robusta
+        required_fields = ['content_type', 'content_id', 'title']
+        if not all(field in data for field in required_fields):
+            missing = [field for field in required_fields if field not in data]
+            return jsonify({'error': f'Campos obrigatórios faltando: {missing}'}), 400
+        
+        # Verifique tipos válidos
+        valid_types = ['movie', 'tv', 'game']
+        if data['content_type'] not in valid_types:
+            return jsonify({'error': f'Tipo de conteúdo inválido. Use: {valid_types}'}), 400
         
         content_type = data.get('content_type')
         content_id = str(data.get('content_id'))
@@ -183,18 +204,33 @@ def add_favorite():
         if genres:
             favorite.set_genres(genres)
         
-        db.session.add(favorite)
-        db.session.commit()
+        with db.session.begin():
+            existing = Favorite.query.filter_by(
+                user_id=user_id,
+                content_type=data['content_type'],
+                content_id=str(data['content_id'])
+            ).first()
+            
+            if existing:
+                return jsonify({'error': 'Item já está nos favoritos'}), 409
+                
+            favorite = Favorite(
+                user_id=user_id,
+                content_type=data['content_type'],
+                content_id=str(data['content_id']),
+                title=data['title'],
+                poster_url=data.get('poster_url'),
+                rating=data.get('rating'),
+                release_date=data.get('release_date'),
+                overview=data.get('overview')
+            )
+            
+            db.session.add(favorite)
         
-        return jsonify({
-            'message': 'Adicionado aos favoritos com sucesso',
-            'favorite': favorite.to_dict()
-        }), 201
+        return jsonify({'message': 'Adicionado com sucesso'}), 201
         
     except Exception as e:
-        db.session.rollback()
-        print(f"Erro ao adicionar favorito: {str(e)}")
-        return jsonify({'error': f'Erro ao adicionar favorito: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @content_bp.route('/favorites/<int:favorite_id>', methods=['DELETE'])
 @jwt_required()

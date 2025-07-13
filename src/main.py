@@ -42,17 +42,21 @@ def create_app():
     jwt = JWTManager(app)
     
     # Configurar CORS
-    CORS(app, origins=[
-        'https://myverse.com.br',
-        'https://www.myverse.com.br',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5000',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:5173',
-        'http://127.0.0.1:5000'
-    ], supports_credentials=True)
-    
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": [
+                'https://myverse.com.br',
+                'https://www.myverse.com.br',
+                'http://localhost:3000',
+                'http://localhost:5173'
+            ],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True,
+            "expose_headers": ["Content-Type", "X-Total-Count"],
+            "max_age": 86400
+        }   
+    })
     # Registrar blueprints
     from src.routes.auth import auth_bp
     from src.routes.content import content_bp
