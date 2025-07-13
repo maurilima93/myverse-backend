@@ -66,13 +66,7 @@ def create_app():
             "max_age": 86400
         }   
     })
-    # Registrar blueprints
-    from src.routes.auth import auth_bp
-    from src.routes.content import content_bp
-    from src.routes.user import user_bp
-    from src.routes.forum import forum_bp
-    from src.routes.news import news_bp
-    
+
     @app.before_request
     def handle_options():
         if request.method == 'OPTIONS':
@@ -80,6 +74,13 @@ def create_app():
             response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
             response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
             return response
+            
+    # Registrar blueprints
+    from src.routes.auth import auth_bp
+    from src.routes.content import content_bp
+    from src.routes.user import user_bp
+    from src.routes.forum import forum_bp
+    from src.routes.news import news_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(content_bp, url_prefix='/api/content')

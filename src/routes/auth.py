@@ -6,14 +6,6 @@ import re
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.before_request  # Correto: usar o próprio blueprint
-def handle_auth_options():
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'preflight'})
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-        return response
-
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
