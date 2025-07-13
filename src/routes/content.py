@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, UserPreference, Favorite
+from src.models.database import db, User, UserPreference, Favorite
 from src.services.tmdb_service import TMDbService
 from src.services.igdb_service import IGDBService
 
@@ -43,6 +43,7 @@ def search_content():
         }), 200
         
     except Exception as e:
+        print(f"Erro na pesquisa: {str(e)}")
         return jsonify({'error': f'Erro na pesquisa: {str(e)}'}), 500
 
 @content_bp.route('/trending', methods=['GET'])
@@ -70,6 +71,7 @@ def get_trending():
         }), 200
         
     except Exception as e:
+        print(f"Erro ao buscar tendências: {str(e)}")
         return jsonify({'error': f'Erro ao buscar tendências: {str(e)}'}), 500
 
 @content_bp.route('/recommendations', methods=['GET'])
@@ -113,6 +115,7 @@ def get_recommendations():
         }), 200
         
     except Exception as e:
+        print(f"Erro ao buscar recomendações: {str(e)}")
         return jsonify({'error': f'Erro ao buscar recomendações: {str(e)}'}), 500
 
 @content_bp.route('/favorites', methods=['GET'])
@@ -129,6 +132,7 @@ def get_favorites():
         }), 200
         
     except Exception as e:
+        print(f"Erro ao buscar favoritos: {str(e)}")
         return jsonify({'error': f'Erro ao buscar favoritos: {str(e)}'}), 500
 
 @content_bp.route('/favorites', methods=['POST'])
@@ -138,10 +142,17 @@ def add_favorite():
         user_id = get_jwt_identity()
         data = request.get_json()
         
+        if not data:
+            return jsonify({'error': 'Dados não fornecidos'}), 400
+        
         content_type = data.get('content_type')
-        content_id = data.get('content_id')
+        content_id = str(data.get('content_id'))
         title = data.get('title')
         poster_url = data.get('poster_url')
+        rating = data.get('rating')
+        release_date = data.get('release_date')
+        overview = data.get('overview')
+        genres = data.get('genres', [])
         
         if not all([content_type, content_id, title]):
             return jsonify({'error': 'Dados obrigatórios: content_type, content_id, title'}), 400
@@ -154,7 +165,7 @@ def add_favorite():
         ).first()
         
         if existing:
-            return jsonify({'error': 'Item já está nos favoritos'}), 400
+            return jsonify({'error': 'Item já está nos favoritos'}), 409
         
         # Adicionar aos favoritos
         favorite = Favorite(
@@ -162,19 +173,27 @@ def add_favorite():
             content_type=content_type,
             content_id=content_id,
             title=title,
-            poster_url=poster_url
+            poster_url=poster_url,
+            rating=rating,
+            release_date=release_date,
+            overview=overview
         )
+        
+        # Definir gêneros se fornecidos
+        if genres:
+            favorite.set_genres(genres)
         
         db.session.add(favorite)
         db.session.commit()
         
         return jsonify({
-            'message': 'Adicionado aos favoritos',
+            'message': 'Adicionado aos favoritos com sucesso',
             'favorite': favorite.to_dict()
         }), 201
         
     except Exception as e:
         db.session.rollback()
+        print(f"Erro ao adicionar favorito: {str(e)}")
         return jsonify({'error': f'Erro ao adicionar favorito: {str(e)}'}), 500
 
 @content_bp.route('/favorites/<int:favorite_id>', methods=['DELETE'])
@@ -191,17 +210,45 @@ def remove_favorite(favorite_id):
         db.session.delete(favorite)
         db.session.commit()
         
-        return jsonify({'message': 'Removido dos favoritos'}), 200
+        return jsonify({'message': 'Removido dos favoritos com sucesso'}), 200
         
     except Exception as e:
         db.session.rollback()
+        print(f"Erro ao remover favorito: {str(e)}")
         return jsonify({'error': f'Erro ao remover favorito: {str(e)}'}), 500
+
+@content_bp.route('/favorites/check', methods=['POST'])
+@jwt_required()
+def check_favorite():
+    """Verifica se um item está nos favoritos"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        content_type = data.get('content_type')
+        content_id = str(data.get('content_id'))
+        
+        if not all([content_type, content_id]):
+            return jsonify({'error': 'content_type e content_id são obrigatórios'}), 400
+        
+        favorite = Favorite.query.filter_by(
+            user_id=user_id,
+            content_type=content_type,
+            content_id=content_id
+        ).first()
+        
+        return jsonify({
+            'is_favorite': favorite is not None,
+            'favorite_id': favorite.id if favorite else None
+        }), 200
+        
+    except Exception as e:
+        print(f"Erro ao verificar favorito: {str(e)}")
+        return jsonify({'error': f'Erro ao verificar favorito: {str(e)}'}), 500
 
 @content_bp.route('/details/<content_type>/<content_id>', methods=['GET'])
 def get_content_details(content_type, content_id):
     try:
-        details = None
-        
         if content_type == 'movie':
             details = tmdb_service.get_movie_details(content_id)
         elif content_type == 'tv':
@@ -217,5 +264,68 @@ def get_content_details(content_type, content_id):
         return jsonify(details), 200
         
     except Exception as e:
+        print(f"Erro ao buscar detalhes: {str(e)}")
         return jsonify({'error': f'Erro ao buscar detalhes: {str(e)}'}), 500
+
+@content_bp.route('/preferences', methods=['GET'])
+@jwt_required()
+def get_user_preferences():
+    try:
+        user_id = get_jwt_identity()
+        
+        preferences = UserPreference.query.filter_by(user_id=user_id).first()
+        
+        if not preferences:
+            # Criar preferências padrão
+            preferences = UserPreference(
+                user_id=user_id,
+                favorite_categories='["movies", "tv", "games"]',
+                favorite_genres='[]'
+            )
+            db.session.add(preferences)
+            db.session.commit()
+        
+        return jsonify(preferences.to_dict()), 200
+        
+    except Exception as e:
+        print(f"Erro ao buscar preferências: {str(e)}")
+        return jsonify({'error': f'Erro ao buscar preferências: {str(e)}'}), 500
+
+@content_bp.route('/preferences', methods=['PUT'])
+@jwt_required()
+def update_user_preferences():
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        preferences = UserPreference.query.filter_by(user_id=user_id).first()
+        
+        if not preferences:
+            preferences = UserPreference(user_id=user_id)
+            db.session.add(preferences)
+        
+        # Atualizar campos
+        if 'favorite_genres' in data:
+            preferences.set_genres(data['favorite_genres'])
+        
+        if 'favorite_categories' in data:
+            preferences.set_categories(data['favorite_categories'])
+        
+        if 'language' in data:
+            preferences.language = data['language']
+        
+        if 'notifications_enabled' in data:
+            preferences.notifications_enabled = data['notifications_enabled']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Preferências atualizadas com sucesso',
+            'preferences': preferences.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erro ao atualizar preferências: {str(e)}")
+        return jsonify({'error': f'Erro ao atualizar preferências: {str(e)}'}), 500
 

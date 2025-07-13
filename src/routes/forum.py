@@ -1,20 +1,23 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from src.models.database import db, ForumPost, ForumReply, User
-from datetime import datetime
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from src.models.database import db, User, ForumPost, ForumReply
 
 forum_bp = Blueprint('forum', __name__)
 
 @forum_bp.route('/posts', methods=['GET'])
 def get_posts():
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
+        category = request.args.get('category', 'all')
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
         
         query = ForumPost.query
         
-        # Ordenar por data
-        query = query.order_by(ForumPost.created_at.desc())
+        if category != 'all':
+            query = query.filter_by(category=category)
+        
+        # Ordenar por posts fixados primeiro, depois por data
+        query = query.order_by(ForumPost.is_pinned.desc(), ForumPost.created_at.desc())
         
         posts = query.paginate(
             page=page, 
@@ -24,17 +27,14 @@ def get_posts():
         
         return jsonify({
             'posts': [post.to_dict() for post in posts.items],
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': posts.total,
-                'pages': posts.pages,
-                'has_next': posts.has_next,
-                'has_prev': posts.has_prev
-            }
+            'total': posts.total,
+            'pages': posts.pages,
+            'current_page': page,
+            'per_page': per_page
         }), 200
         
     except Exception as e:
+        print(f"Erro ao buscar posts: {str(e)}")
         return jsonify({'error': f'Erro ao buscar posts: {str(e)}'}), 500
 
 @forum_bp.route('/posts', methods=['POST'])
@@ -49,20 +49,28 @@ def create_post():
         
         title = data.get('title', '').strip()
         content = data.get('content', '').strip()
-        category = data.get('category', 'geral')
+        category = data.get('category', 'geral').strip()
         
-        if not title or len(title) < 5:
+        if not all([title, content]):
+            return jsonify({'error': 'Título e conteúdo são obrigatórios'}), 400
+        
+        if len(title) < 5:
             return jsonify({'error': 'Título deve ter pelo menos 5 caracteres'}), 400
         
-        if not content or len(content) < 10:
+        if len(content) < 10:
             return jsonify({'error': 'Conteúdo deve ter pelo menos 10 caracteres'}), 400
+        
+        # Verificar se o usuário existe
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Usuário não encontrado'}), 404
         
         # Criar post
         post = ForumPost(
             title=title,
             content=content,
-            author_id=user_id,
-            category=category
+            category=category,
+            author_id=user_id
         )
         
         db.session.add(post)
@@ -75,6 +83,7 @@ def create_post():
         
     except Exception as e:
         db.session.rollback()
+        print(f"Erro ao criar post: {str(e)}")
         return jsonify({'error': f'Erro ao criar post: {str(e)}'}), 500
 
 @forum_bp.route('/posts/<int:post_id>', methods=['GET'])
@@ -85,15 +94,20 @@ def get_post(post_id):
         if not post:
             return jsonify({'error': 'Post não encontrado'}), 404
         
-        # Buscar comentários do post
-        comments = ForumReply.query.filter_by(post_id=post_id).order_by(ForumReply.created_at.asc()).all()
+        # Incrementar visualizações
+        post.views += 1
+        db.session.commit()
         
-        post_data = post.to_dict()
-        post_data['comments'] = [comment.to_dict() for comment in comments]
+        # Buscar replies
+        replies = ForumReply.query.filter_by(post_id=post_id).order_by(ForumReply.created_at.asc()).all()
         
-        return jsonify(post_data), 200
+        return jsonify({
+            'post': post.to_dict(),
+            'replies': [reply.to_dict() for reply in replies]
+        }), 200
         
     except Exception as e:
+        print(f"Erro ao buscar post: {str(e)}")
         return jsonify({'error': f'Erro ao buscar post: {str(e)}'}), 500
 
 @forum_bp.route('/posts/<int:post_id>', methods=['PUT'])
@@ -101,16 +115,20 @@ def get_post(post_id):
 def update_post(post_id):
     try:
         user_id = get_jwt_identity()
+        data = request.get_json()
+        
         post = ForumPost.query.get(post_id)
         
         if not post:
             return jsonify({'error': 'Post não encontrado'}), 404
         
         if post.author_id != user_id:
-            return jsonify({'error': 'Sem permissão para editar este post'}), 403
+            return jsonify({'error': 'Você não tem permissão para editar este post'}), 403
         
-        data = request.get_json()
+        if post.is_locked:
+            return jsonify({'error': 'Este post está bloqueado para edição'}), 403
         
+        # Atualizar campos
         if 'title' in data:
             title = data['title'].strip()
             if len(title) >= 5:
@@ -121,7 +139,9 @@ def update_post(post_id):
             if len(content) >= 10:
                 post.content = content
         
-        post.updated_at = datetime.utcnow()
+        if 'category' in data:
+            post.category = data['category'].strip()
+        
         db.session.commit()
         
         return jsonify({
@@ -131,6 +151,7 @@ def update_post(post_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"Erro ao atualizar post: {str(e)}")
         return jsonify({'error': f'Erro ao atualizar post: {str(e)}'}), 500
 
 @forum_bp.route('/posts/<int:post_id>', methods=['DELETE'])
@@ -138,13 +159,14 @@ def update_post(post_id):
 def delete_post(post_id):
     try:
         user_id = get_jwt_identity()
+        
         post = ForumPost.query.get(post_id)
         
         if not post:
             return jsonify({'error': 'Post não encontrado'}), 404
         
         if post.author_id != user_id:
-            return jsonify({'error': 'Sem permissão para deletar este post'}), 403
+            return jsonify({'error': 'Você não tem permissão para deletar este post'}), 403
         
         db.session.delete(post)
         db.session.commit()
@@ -153,18 +175,14 @@ def delete_post(post_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"Erro ao deletar post: {str(e)}")
         return jsonify({'error': f'Erro ao deletar post: {str(e)}'}), 500
 
-@forum_bp.route('/posts/<int:post_id>/comments', methods=['POST'])
+@forum_bp.route('/posts/<int:post_id>/replies', methods=['POST'])
 @jwt_required()
-def create_comment(post_id):
+def create_reply(post_id):
     try:
         user_id = get_jwt_identity()
-        post = ForumPost.query.get(post_id)
-        
-        if not post:
-            return jsonify({'error': 'Post não encontrado'}), 404
-        
         data = request.get_json()
         
         if not data:
@@ -172,83 +190,147 @@ def create_comment(post_id):
         
         content = data.get('content', '').strip()
         
-        if not content or len(content) < 5:
-            return jsonify({'error': 'Comentário deve ter pelo menos 5 caracteres'}), 400
+        if not content:
+            return jsonify({'error': 'Conteúdo é obrigatório'}), 400
         
-        # Criar comentário
-        comment = ForumReply(
+        if len(content) < 5:
+            return jsonify({'error': 'Resposta deve ter pelo menos 5 caracteres'}), 400
+        
+        # Verificar se o post existe
+        post = ForumPost.query.get(post_id)
+        if not post:
+            return jsonify({'error': 'Post não encontrado'}), 404
+        
+        if post.is_locked:
+            return jsonify({'error': 'Este post está bloqueado para novas respostas'}), 403
+        
+        # Verificar se o usuário existe
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Usuário não encontrado'}), 404
+        
+        # Criar resposta
+        reply = ForumReply(
             content=content,
-            author_id=user_id,
-            post_id=post_id
+            post_id=post_id,
+            author_id=user_id
         )
         
-        db.session.add(comment)
+        db.session.add(reply)
         db.session.commit()
         
         return jsonify({
-            'message': 'Comentário criado com sucesso',
-            'comment': comment.to_dict()
+            'message': 'Resposta criada com sucesso',
+            'reply': reply.to_dict()
         }), 201
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro ao criar comentário: {str(e)}'}), 500
+        print(f"Erro ao criar resposta: {str(e)}")
+        return jsonify({'error': f'Erro ao criar resposta: {str(e)}'}), 500
 
-@forum_bp.route('/comments/<int:comment_id>', methods=['PUT'])
+@forum_bp.route('/replies/<int:reply_id>', methods=['PUT'])
 @jwt_required()
-def update_comment(comment_id):
+def update_reply(reply_id):
     try:
         user_id = get_jwt_identity()
-        comment = ForumReply.query.get(comment_id)
-        
-        if not comment:
-            return jsonify({'error': 'Comentário não encontrado'}), 404
-        
-        if comment.author_id != user_id:
-            return jsonify({'error': 'Sem permissão para editar este comentário'}), 403
-        
         data = request.get_json()
         
-        if not data:
-            return jsonify({'error': 'Dados não fornecidos'}), 400
+        reply = ForumReply.query.get(reply_id)
+        
+        if not reply:
+            return jsonify({'error': 'Resposta não encontrada'}), 404
+        
+        if reply.author_id != user_id:
+            return jsonify({'error': 'Você não tem permissão para editar esta resposta'}), 403
+        
+        # Verificar se o post não está bloqueado
+        if reply.post.is_locked:
+            return jsonify({'error': 'Este post está bloqueado para edições'}), 403
         
         content = data.get('content', '').strip()
         
-        if not content or len(content) < 5:
-            return jsonify({'error': 'Comentário deve ter pelo menos 5 caracteres'}), 400
+        if not content:
+            return jsonify({'error': 'Conteúdo é obrigatório'}), 400
         
-        comment.content = content
-        comment.updated_at = datetime.utcnow()
+        if len(content) < 5:
+            return jsonify({'error': 'Resposta deve ter pelo menos 5 caracteres'}), 400
+        
+        reply.content = content
         db.session.commit()
         
         return jsonify({
-            'message': 'Comentário atualizado com sucesso',
-            'comment': comment.to_dict()
+            'message': 'Resposta atualizada com sucesso',
+            'reply': reply.to_dict()
         }), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro ao atualizar comentário: {str(e)}'}), 500
+        print(f"Erro ao atualizar resposta: {str(e)}")
+        return jsonify({'error': f'Erro ao atualizar resposta: {str(e)}'}), 500
 
-@forum_bp.route('/comments/<int:comment_id>', methods=['DELETE'])
+@forum_bp.route('/replies/<int:reply_id>', methods=['DELETE'])
 @jwt_required()
-def delete_comment(comment_id):
+def delete_reply(reply_id):
     try:
         user_id = get_jwt_identity()
-        comment = ForumReply.query.get(comment_id)
         
-        if not comment:
-            return jsonify({'error': 'Comentário não encontrado'}), 404
+        reply = ForumReply.query.get(reply_id)
         
-        if comment.author_id != user_id:
-            return jsonify({'error': 'Sem permissão para deletar este comentário'}), 403
+        if not reply:
+            return jsonify({'error': 'Resposta não encontrada'}), 404
         
-        db.session.delete(comment)
+        if reply.author_id != user_id:
+            return jsonify({'error': 'Você não tem permissão para deletar esta resposta'}), 403
+        
+        db.session.delete(reply)
         db.session.commit()
         
-        return jsonify({'message': 'Comentário deletado com sucesso'}), 200
+        return jsonify({'message': 'Resposta deletada com sucesso'}), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro ao deletar comentário: {str(e)}'}), 500
+        print(f"Erro ao deletar resposta: {str(e)}")
+        return jsonify({'error': f'Erro ao deletar resposta: {str(e)}'}), 500
+
+@forum_bp.route('/categories', methods=['GET'])
+def get_categories():
+    try:
+        # Categorias padrão do fórum
+        categories = [
+            {'id': 'filmes', 'name': 'Filmes', 'description': 'Discussões sobre filmes'},
+            {'id': 'series', 'name': 'Séries', 'description': 'Discussões sobre séries de TV'},
+            {'id': 'jogos', 'name': 'Jogos', 'description': 'Discussões sobre videogames'},
+            {'id': 'livros', 'name': 'Livros', 'description': 'Discussões sobre livros'},
+            {'id': 'geral', 'name': 'Geral', 'description': 'Discussões gerais sobre entretenimento'},
+            {'id': 'recomendacoes', 'name': 'Recomendações', 'description': 'Peça e dê recomendações'},
+            {'id': 'noticias', 'name': 'Notícias', 'description': 'Últimas notícias do entretenimento'}
+        ]
+        
+        return jsonify({'categories': categories}), 200
+        
+    except Exception as e:
+        print(f"Erro ao buscar categorias: {str(e)}")
+        return jsonify({'error': f'Erro ao buscar categorias: {str(e)}'}), 500
+
+@forum_bp.route('/stats', methods=['GET'])
+def get_forum_stats():
+    try:
+        total_posts = ForumPost.query.count()
+        total_replies = ForumReply.query.count()
+        total_users = User.query.count()
+        
+        # Posts mais recentes
+        recent_posts = ForumPost.query.order_by(ForumPost.created_at.desc()).limit(5).all()
+        
+        return jsonify({
+            'total_posts': total_posts,
+            'total_replies': total_replies,
+            'total_users': total_users,
+            'recent_posts': [post.to_dict() for post in recent_posts]
+        }), 200
+        
+    except Exception as e:
+        print(f"Erro ao buscar estatísticas: {str(e)}")
+        return jsonify({'error': f'Erro ao buscar estatísticas: {str(e)}'}), 500
 

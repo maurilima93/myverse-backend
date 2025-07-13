@@ -1,7 +1,6 @@
-# Adicione estes modelos ao seu arquivo database.py
-
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+import json
 
 db = SQLAlchemy()
 
@@ -19,6 +18,7 @@ class User(db.Model):
     favorites = db.relationship('Favorite', backref='user', lazy=True, cascade='all, delete-orphan')
     forum_posts = db.relationship('ForumPost', backref='author', lazy=True)
     forum_replies = db.relationship('ForumReply', backref='author', lazy=True)
+    preferences = db.relationship('UserPreference', backref='user', uselist=False, cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<User {self.username}>'
@@ -31,6 +31,56 @@ class User(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+class UserPreference(db.Model):
+    __tablename__ = 'user_preferences'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    favorite_genres = db.Column(db.Text)  # JSON string
+    favorite_categories = db.Column(db.Text)  # JSON string
+    language = db.Column(db.String(10), default='pt-BR')
+    notifications_enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def get_genres(self):
+        """Retorna lista de gêneros favoritos"""
+        if self.favorite_genres:
+            try:
+                return json.loads(self.favorite_genres)
+            except:
+                return []
+        return []
+    
+    def set_genres(self, genres):
+        """Define lista de gêneros favoritos"""
+        self.favorite_genres = json.dumps(genres) if genres else None
+    
+    def get_categories(self):
+        """Retorna lista de categorias favoritas"""
+        if self.favorite_categories:
+            try:
+                return json.loads(self.favorite_categories)
+            except:
+                return []
+        return ['movies', 'tv', 'games']  # Default
+    
+    def set_categories(self, categories):
+        """Define lista de categorias favoritas"""
+        self.favorite_categories = json.dumps(categories) if categories else None
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'favorite_genres': self.get_genres(),
+            'favorite_categories': self.get_categories(),
+            'language': self.language,
+            'notifications_enabled': self.notifications_enabled,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
 class Favorite(db.Model):
     __tablename__ = 'favorites'
     
@@ -41,6 +91,9 @@ class Favorite(db.Model):
     title = db.Column(db.String(255), nullable=False)
     poster_url = db.Column(db.Text)
     rating = db.Column(db.Float)
+    release_date = db.Column(db.String(20))
+    overview = db.Column(db.Text)
+    genres = db.Column(db.Text)  # JSON string
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Índice único para evitar duplicatas
@@ -48,6 +101,19 @@ class Favorite(db.Model):
     
     def __repr__(self):
         return f'<Favorite {self.title}>'
+    
+    def get_genres(self):
+        """Retorna lista de gêneros"""
+        if self.genres:
+            try:
+                return json.loads(self.genres)
+            except:
+                return []
+        return []
+    
+    def set_genres(self, genres_list):
+        """Define lista de gêneros"""
+        self.genres = json.dumps(genres_list) if genres_list else None
     
     def to_dict(self):
         return {
@@ -57,6 +123,9 @@ class Favorite(db.Model):
             'title': self.title,
             'poster_url': self.poster_url,
             'rating': self.rating,
+            'release_date': self.release_date,
+            'overview': self.overview,
+            'genres': self.get_genres(),
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -68,6 +137,9 @@ class ForumPost(db.Model):
     content = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(50), nullable=False)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    views = db.Column(db.Integer, default=0)
+    is_pinned = db.Column(db.Boolean, default=False)
+    is_locked = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -83,7 +155,13 @@ class ForumPost(db.Model):
             'title': self.title,
             'content': self.content,
             'category': self.category,
-            'author': self.author.username if self.author else None,
+            'author': {
+                'id': self.author.id,
+                'username': self.author.username
+            } if self.author else None,
+            'views': self.views,
+            'is_pinned': self.is_pinned,
+            'is_locked': self.is_locked,
             'replies_count': len(self.replies),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -106,91 +184,12 @@ class ForumReply(db.Model):
         return {
             'id': self.id,
             'content': self.content,
-            'author': self.author.username if self.author else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
-
-
-
-
-class UserPreference(db.Model):
-    __tablename__ = 'user_preferences'
-
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    preferred_categories = db.Column(db.String(255), default='')  # 'movies,tv,games'
-    preferred_genres = db.Column(db.String(255), default='')  # 'action,comedy'
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    user = db.relationship('User', backref=db.backref('preference', uselist=False))
-
-    def __repr__(self):
-        return f'<UserPreference for User {self.user_id}>'
-
-    def get_categories(self):
-        return [cat.strip() for cat in self.preferred_categories.split(',') if cat.strip()]
-
-    def set_categories(self, categories):
-        self.preferred_categories = ','.join(categories)
-
-    def get_genres(self):
-        return [genre.strip() for genre in self.preferred_genres.split(',') if genre.strip()]
-
-    def set_genres(self, genres):
-        self.preferred_genres = ','.join(genres)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'user_id': self.user_id,
-            'preferred_categories': self.get_categories(),
-            'preferred_genres': self.get_genres(),
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }
-
-
-
-
-class News(db.Model):
-    __tablename__ = 'news'
-
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(255), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    summary = db.Column(db.String(500))
-    image_url = db.Column(db.String(500))
-    source_url = db.Column(db.String(500))
-    category = db.Column(db.String(50), default='geral')  # 'movies', 'tv', 'games', 'geral'
-    is_published = db.Column(db.Boolean, default=True)
-    is_featured = db.Column(db.Boolean, default=False)
-    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    published_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    author = db.relationship('User', backref='news_articles')
-
-    def __repr__(self):
-        return f'<News {self.title}>'
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'title': self.title,
-            'content': self.content,
-            'summary': self.summary,
-            'image_url': self.image_url,
-            'source_url': self.source_url,
-            'category': self.category,
-            'is_published': self.is_published,
-            'is_featured': self.is_featured,
+            'post_id': self.post_id,
             'author': {
                 'id': self.author.id,
                 'username': self.author.username
             } if self.author else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'published_at': self.published_at.isoformat() if self.published_at else None
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
