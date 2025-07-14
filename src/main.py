@@ -18,11 +18,11 @@ def create_app():
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
     
     # Configuração do banco de dados
-    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_host = os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')
     db_port = os.environ.get('DB_PORT', '5432')
-    db_name = os.environ.get('DB_NAME', 'myverse')
-    db_user = os.environ.get('DB_USER', 'postgres')
-    db_password = os.environ.get('DB_PASSWORD', 'password')
+    db_name = os.environ.get('DB_NAME', 'postgres')
+    db_user = os.environ.get('DB_USER', 'admin1')
+    db_password = os.environ.get('DB_PASSWORD', 'EsNvDJNCydIdbKXcAZy5')
     
     app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode=require'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -48,13 +48,13 @@ def create_app():
     jwt.init_app(app)
     
     # Importar modelos
-    from .models.database import User, UserPreference, Favorite, ForumPost, ForumReply
+    from src.models.database import User, UserPreference, Favorite, ForumPost, ForumReply
     
     # Registrar blueprints
-    from .routes.auth import auth_bp
-    from .routes.content import content_bp
-    from .routes.user import user_bp
-    from .routes.forum import forum_bp
+    from src.routes.auth import auth_bp
+    from src.routes.content import content_bp
+    from src.routes.user import user_bp
+    from src.routes.forum import forum_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(content_bp, url_prefix='/content')
