@@ -79,7 +79,7 @@ def create_app():
         }), 200
 
     # Rota de health check
-    @app.route('/health')
+    @app.route('/api/health')
     def health_check():
         try:
             # Testar conexão com banco

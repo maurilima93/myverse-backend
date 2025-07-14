@@ -75,14 +75,15 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@auth_bp.route('/api/auth/login', methods=['OPTIONS'])
-def handle_options():
-    return jsonify({}), 200, {
-        'Access-Control-Allow-Origin': 'https://myverse.com.br',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true'
-    }
+@app.route('/api/auth/login', methods=['OPTIONS'])
+def handle_login_options():
+    response = jsonify()
+    response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
+    response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Max-Age', '600')
+    return response
 
 @auth_bp.route('/api/auth/login', methods=['POST'])
 def login():
