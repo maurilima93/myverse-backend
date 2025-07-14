@@ -36,18 +36,15 @@ def create_app():
     }
     
     # Configurar CORS
-    CORS(app, 
+    CORS(app,
      resources={
          r"/api/*": {
-             "origins": [
-                 "https://myverse.com.br",
-                 "https://www.myverse.com.br",
-                 "http://localhost:3000",
-                 "http://localhost:5173"
-             ],
+             "origins": ["https://myverse.com.br", "https://www.myverse.com.br"],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
-             "supports_credentials": True
+             "supports_credentials": True,
+             "expose_headers": ["Content-Type"],
+             "max_age": 600
          }
      })
     
