@@ -75,7 +75,7 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@app.route('/api/auth/login', methods=['OPTIONS'])
+@auth_bp.route('/api/auth/login', methods=['OPTIONS'])
 def handle_login_options():
     response = jsonify()
     response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
