@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from src.models.database import db, User, Favorite, UserPreference
-from services.tmdb_service import TMDbService
-from services.igdb_service import IGDBService
+from ..services.tmdb_service import TMDbService
+from ..services.igdb_service import IGDBService
 import json
 
 content_bp = Blueprint('content', __name__)
