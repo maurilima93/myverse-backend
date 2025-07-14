@@ -61,11 +61,23 @@ def create_app():
     from src.routes.user import user_bp
     from src.routes.forum import forum_bp
     
-    app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(content_bp, url_prefix='/content')
-    app.register_blueprint(user_bp, url_prefix='/user')
-    app.register_blueprint(forum_bp, url_prefix='/forum')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(content_bp, url_prefix='/api/content')
+    app.register_blueprint(user_bp, url_prefix='/api/user')
+    app.register_blueprint(forum_bp, url_prefix='/api/forum')
     
+    @app.route('/')
+    def home():
+        return jsonify({
+            "status": "online",
+            "message": "MyVerse API is running",
+            "endpoints": {
+                "auth": "/api/auth",
+                "content": "/api/content",
+                "forum": "/api/forum"
+            }
+        }), 200
+
     # Rota de health check
     @app.route('/health')
     def health_check():
@@ -83,7 +95,13 @@ def create_app():
                 'database': 'disconnected',
                 'error': str(e)
             }), 500
-    
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({
+            "error": "Endpoint not found",
+            "message": "The requested URL was not found on the server",
+            "status_code": 404
+        }), 404
     # Criar tabelas
     with app.app_context():
         try:

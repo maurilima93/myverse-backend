@@ -21,7 +21,7 @@ def validate_password(password):
         return False
     return True
 
-@auth_bp.route('/register', methods=['POST'])
+@auth_bp.route('/api/auth/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
@@ -75,7 +75,7 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@auth_bp.route('/login', methods=['OPTIONS'])
+@auth_bp.route('/api/auth/login', methods=['OPTIONS'])
 def handle_options():
     return jsonify({}), 200, {
         'Access-Control-Allow-Origin': 'https://myverse.com.br',
@@ -84,7 +84,7 @@ def handle_options():
         'Access-Control-Allow-Credentials': 'true'
     }
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.route('/api/auth/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
@@ -116,7 +116,7 @@ def login():
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@auth_bp.route('/me', methods=['GET'])
+@auth_bp.route('/api/auth/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
     try:
