@@ -14,7 +14,7 @@ FORUM_CATEGORIES = [
     'noticias'
 ]
 
-@forum_bp.route('/posts', methods=['GET'])
+@forum_bp.route('/api/forum/posts', methods=['GET'])
 def get_posts():
     try:
         category = request.args.get('category')
@@ -42,7 +42,7 @@ def get_posts():
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/posts', methods=['POST'])
+@forum_bp.route('/api/forum/posts', methods=['POST'])
 @jwt_required()
 def create_post():
     try:
@@ -86,7 +86,7 @@ def create_post():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/posts/<int:post_id>', methods=['GET'])
+@forum_bp.route('/api/forum/posts/<int:post_id>', methods=['GET'])
 def get_post(post_id):
     try:
         post = ForumPost.query.get_or_404(post_id)
@@ -102,7 +102,7 @@ def get_post(post_id):
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/posts/<int:post_id>/replies', methods=['POST'])
+@forum_bp.route('/api/forum/posts/<int:post_id>/replies', methods=['POST'])
 @jwt_required()
 def create_reply(post_id):
     try:
@@ -139,7 +139,7 @@ def create_reply(post_id):
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/posts/<int:post_id>', methods=['PUT'])
+@forum_bp.route('/api/forum/posts/<int:post_id>', methods=['PUT'])
 @jwt_required()
 def update_post(post_id):
     try:
@@ -181,7 +181,7 @@ def update_post(post_id):
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/posts/<int:post_id>', methods=['DELETE'])
+@forum_bp.route('/api/forum/posts/<int:post_id>', methods=['DELETE'])
 @jwt_required()
 def delete_post(post_id):
     try:
@@ -202,7 +202,7 @@ def delete_post(post_id):
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@forum_bp.route('/categories', methods=['GET'])
+@forum_bp.route('/api/forum/categories', methods=['GET'])
 def get_categories():
     return jsonify({
         'categories': [

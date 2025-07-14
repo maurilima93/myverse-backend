@@ -4,7 +4,7 @@ from src.models.database import db, User, UserPreference, Favorite
 
 user_bp = Blueprint('user', __name__)
 
-@user_bp.route('/profile', methods=['GET'])
+@user_bp.route('/api/user/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
     try:
@@ -39,7 +39,7 @@ def get_profile():
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@user_bp.route('/preferences', methods=['GET'])
+@user_bp.route('/api/user/preferences', methods=['GET'])
 @jwt_required()
 def get_preferences():
     try:
@@ -53,7 +53,7 @@ def get_preferences():
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@user_bp.route('/preferences', methods=['POST'])
+@user_bp.route('/api/user/preferences', methods=['POST'])
 @jwt_required()
 def update_preferences():
     try:
