@@ -48,7 +48,7 @@ def create_app():
     jwt.init_app(app)
     
     # Importar modelos
-    from src.models.database import User, UserPreference, Favorite, ForumPost, ForumReply
+    from .models.database import User, UserPreference, Favorite, ForumPost, ForumReply
     
     # Registrar blueprints
     from routes.auth import auth_bp
