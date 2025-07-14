@@ -51,10 +51,10 @@ def create_app():
     from .models.database import User, UserPreference, Favorite, ForumPost, ForumReply
     
     # Registrar blueprints
-    from routes.auth import auth_bp
-    from routes.content import content_bp
-    from routes.user import user_bp
-    from routes.forum import forum_bp
+    from .routes.auth import auth_bp
+    from .routes.content import content_bp
+    from .routes.user import user_bp
+    from .routes.forum import forum_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(content_bp, url_prefix='/content')
