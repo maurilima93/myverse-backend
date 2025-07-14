@@ -75,6 +75,15 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
+@auth_bp.route('/login', methods=['OPTIONS'])
+def handle_options():
+    return jsonify({}), 200, {
+        'Access-Control-Allow-Origin': 'https://myverse.com.br',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true'
+    }
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -99,7 +108,10 @@ def login():
             'message': 'Login realizado com sucesso!',
             'access_token': access_token,
             'user': user.to_dict()
-        }), 200
+        }), 200, {
+            'Access-Control-Allow-Origin': 'https://myverse.com.br',
+            'Access-Control-Allow-Credentials': 'true'
+        }
         
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500

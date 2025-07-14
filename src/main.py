@@ -36,12 +36,20 @@ def create_app():
     }
     
     # Configurar CORS
-    CORS(app, origins=[
-        'https://myverse.com.br',
-        'https://www.myverse.com.br',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ])
+    CORS(app, 
+     resources={
+         r"/api/*": {
+             "origins": [
+                 "https://myverse.com.br",
+                 "https://www.myverse.com.br",
+                 "http://localhost:3000",
+                 "http://localhost:5173"
+             ],
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"],
+             "supports_credentials": True
+         }
+     })
     
     # Inicializar extensões
     db.init_app(app)
