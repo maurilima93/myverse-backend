@@ -75,7 +75,7 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@auth_bp.route('/login', methods=['OPTIONS'])
+@auth_bp.route('/api/auth/login', methods=['OPTIONS'])
 def handle_login_options():
     response = jsonify()
     response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
@@ -85,8 +85,9 @@ def handle_login_options():
     response.headers.add('Access-Control-Max-Age', '600')
     return response
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.route('/api/auth/login', methods=['POST'])
 def login():
+    def login():
     try:
         data = request.get_json()
         
@@ -109,10 +110,7 @@ def login():
             return jsonify({'error': 'Credenciais inválidas'}), 401
             
         # Crie o token JWT
-        access_token = create_access_token(identity={
-            'id': user.id,
-            'email': user.email
-        })
+        access_token = create_access_token(identity=user.id)
 
         return jsonify({
             'access_token': access_token,
@@ -123,12 +121,16 @@ def login():
             }
         }), 200
 
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"Erro de banco de dados no login: {str(e)}")
+        return jsonify({
+            'error': 'Erro de conexão com banco de dados'
+        }), 500
     except Exception as e:
-        # Log detalhado do erro no servidor
         print(f"Erro no login: {str(e)}")
         return jsonify({
-            'error': 'Ocorreu um erro durante o login',
-            'details': str(e)
+            'error': 'Ocorreu um erro durante o login'
         }), 500
 
 @auth_bp.route('/api/auth/me', methods=['GET'])

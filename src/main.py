@@ -39,7 +39,14 @@ def create_app():
     CORS(app,
      resources={
          r"/api/*": {
-             "origins": ["https://myverse.com.br", "https://www.myverse.com.br"],
+             "origins": [
+                 "https://myverse.com.br", 
+                 "https://www.myverse.com.br",
+                 "http://localhost:3000",  # Para desenvolvimento
+                 "http://localhost:5173",  # Vite dev server
+                 "http://127.0.0.1:3000",
+                 "http://127.0.0.1:5173"
+             ],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
              "supports_credentials": True,
@@ -83,11 +90,12 @@ def create_app():
     def health_check():
         try:
             # Testar conexão com banco
-            db.session.execute('SELECT 1')
+            result = db.session.execute('SELECT 1').fetchone()
             return jsonify({
                 'status': 'healthy',
                 'database': 'connected',
-                'version': '1.0.0'
+                'version': '1.0.0',
+                'db_result': result[0] if result else None
             })
         except Exception as e:
             return jsonify({
@@ -119,3 +127,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
 
+# Adicionar logs para debug
+print(f"DB_HOST: {os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')}")
+print(f"DB_USER: {os.environ.get('DB_USER', 'admin1')}")
+print(f"DB_NAME: {os.environ.get('DB_NAME', 'postgres')}")
