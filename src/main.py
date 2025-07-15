@@ -126,8 +126,3 @@ app = create_app()
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-# Adicionar logs para debug
-print(f"DB_HOST: {os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')}")
-print(f"DB_USER: {os.environ.get('DB_USER', 'admin1')}")
-print(f"DB_NAME: {os.environ.get('DB_NAME', 'postgres')}")
