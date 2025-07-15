@@ -90,32 +90,46 @@ def login():
     try:
         data = request.get_json()
         
-        if not data or not all(k in data for k in ('email', 'password')):
-            return jsonify({'error': 'Email e password são obrigatórios'}), 400
+        if not data:
+            return jsonify({'error': 'Dados não fornecidos'}), 400
+            
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
         
-        email = data['email'].strip().lower()
-        password = data['password']
-        
+        if not email or not password:
+            return jsonify({'error': 'Email e senha são obrigatórios'}), 400
+
+        # Verifique se o usuário existe
         user = User.query.filter_by(email=email).first()
-        
-        if not user or not user.check_password(password):
-            return jsonify({'error': 'Email ou password incorretos'}), 401
-        
-        access_token = create_access_token(identity=user.id)
-        
-        response = jsonify({
-            'message': 'Login realizado com sucesso!',
-            'access_token': access_token,
-            'user': user.to_dict()
+        if not user:
+            return jsonify({'error': 'Credenciais inválidas'}), 401
+            
+        # Verifique a senha
+        if not user.check_password(password):
+            return jsonify({'error': 'Credenciais inválidas'}), 401
+            
+        # Crie o token JWT
+        access_token = create_access_token(identity={
+            'id': user.id,
+            'email': user.email
         })
-        
-        response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        
-        return response, 200
-        
+
+        return jsonify({
+            'access_token': access_token,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'username': user.username
+            }
+        }), 200
+
     except Exception as e:
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        # Log detalhado do erro no servidor
+        print(f"Erro no login: {str(e)}")
+        return jsonify({
+            'error': 'Ocorreu um erro durante o login',
+            'details': str(e)
+        }), 500
 
 @auth_bp.route('/api/auth/me', methods=['GET'])
 @jwt_required()
