@@ -75,7 +75,7 @@ def register():
         db.session.rollback()
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@auth_bp.route('/api/auth/login', methods=['OPTIONS'])
+@auth_bp.route('/login', methods=['OPTIONS'])
 def handle_login_options():
     response = jsonify()
     response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
@@ -85,7 +85,7 @@ def handle_login_options():
     response.headers.add('Access-Control-Max-Age', '600')
     return response
 
-@auth_bp.route('/api/auth/login', methods=['POST'])
+@auth_bp.route('/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
@@ -96,23 +96,23 @@ def login():
         email = data['email'].strip().lower()
         password = data['password']
         
-        # Buscar usuário
         user = User.query.filter_by(email=email).first()
         
         if not user or not user.check_password(password):
             return jsonify({'error': 'Email ou password incorretos'}), 401
         
-        # Criar token de acesso
         access_token = create_access_token(identity=user.id)
         
-        return jsonify({
+        response = jsonify({
             'message': 'Login realizado com sucesso!',
             'access_token': access_token,
             'user': user.to_dict()
-        }), 200, {
-            'Access-Control-Allow-Origin': 'https://myverse.com.br',
-            'Access-Control-Allow-Credentials': 'true'
-        }
+        })
+        
+        response.headers.add('Access-Control-Allow-Origin', 'https://myverse.com.br')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        
+        return response, 200
         
     except Exception as e:
         return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
