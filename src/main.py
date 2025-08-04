@@ -39,33 +39,38 @@ def create_app():
     }
     
     # Configurar CORS para permitir requisições do frontend
-    CORS(app, 
-         origins=[
-             "https://myverse.com.br", 
-             "https://www.myverse.com.br",
-             "http://localhost:3000",
-             "http://localhost:5173",
-             "http://127.0.0.1:3000",
-             "http://127.0.0.1:5173"
-         ],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization"],
-         supports_credentials=True
-    )
+    CORS(app,
+     resources={
+         r"/api/*": {
+             "origins": [
+                 "https://myverse.com.br", 
+                 "https://www.myverse.com.br",
+                 "http://localhost:3000",  # Para desenvolvimento
+                 "http://localhost:5173",  # Vite dev server
+                 "http://127.0.0.1:3000",
+                 "http://127.0.0.1:5173"
+             ],
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"],
+             "supports_credentials": True,
+             "expose_headers": ["Content-Type"],
+             "max_age": 600
+         }
+     })
     
     # Inicializar extensões
     db.init_app(app)
     jwt.init_app(app)
     
     # Importar modelos
-    from models.database import User, Favorite, ForumPost, ForumReply, Friendship
+    from src.models.database import User, Favorite, ForumPost, ForumReply, Friendship
     
     # Importar e registrar blueprints
-    from routes.auth import auth_bp
-    from routes.content import content_bp
-    from routes.forum import forum_bp
-    from routes.user import user_bp
-    from routes.friends import friends_bp
+    from src.routes.auth import auth_bp
+    from src.routes.content import content_bp
+    from src.routes.forum import forum_bp
+    from src.routes.user import user_bp
+    from src.routes.friends import friends_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(content_bp, url_prefix='/content')
@@ -109,6 +114,9 @@ def create_app():
             print(f"❌ Erro ao criar tabelas: {e}")
     
     return app
+
+# Criar aplicação
+app = create_app()
 
 if __name__ == '__main__':
     app = create_app()
