@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, User, Favorite, UserPreference
-from ..services.tmdb_service import TMDbService
-from ..services.igdb_service import IGDBService
+from models.database import db, User, Favorite
+from services.tmdb_service import TMDbService
+from services.igdb_service import IGDBService
 import json
 
 content_bp = Blueprint('content', __name__)
@@ -19,42 +19,52 @@ def search_content():
         if not query:
             return jsonify({'error': 'Parâmetro de busca é obrigatório'}), 400
         
+        if len(query) < 2:
+            return jsonify({'error': 'Busca deve ter pelo menos 2 caracteres'}), 400
+        
         results = []
         
-        # Buscar filmes e séries no TMDb
+        # Buscar filmes
         try:
             movies = tmdb_service.search_movies(query)
-            tv_shows = tmdb_service.search_tv_shows(query)
-            results.extend(movies + tv_shows)
+            results.extend(movies)
         except Exception as e:
-            print(f"Erro TMDb: {e}")
+            print(f"Erro ao buscar filmes: {e}")
         
-        # Buscar jogos no IGDB
+        # Buscar séries
+        try:
+            tv_shows = tmdb_service.search_tv_shows(query)
+            results.extend(tv_shows)
+        except Exception as e:
+            print(f"Erro ao buscar séries: {e}")
+        
+        # Buscar jogos
         try:
             games = igdb_service.search_games(query)
             results.extend(games)
         except Exception as e:
-            print(f"Erro IGDB: {e}")
+            print(f"Erro ao buscar jogos: {e}")
         
-        # Se não encontrou nada nas APIs, retornar dados mock
-        if not results:
-            results = get_mock_data(query)
+        # Ordenar por relevância (rating/popularity)
+        results.sort(key=lambda x: x.get('rating', 0), reverse=True)
         
         return jsonify({
-            'results': results,
-            'total': len(results)
+            'results': results[:50],  # Limitar a 50 resultados
+            'total': len(results),
+            'query': query
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        return jsonify({'error': f'Erro na busca: {str(e)}'}), 500
 
 @content_bp.route('/favorites', methods=['GET'])
 @jwt_required()
 def get_favorites():
     try:
-        current_user_id = get_jwt_identity()
+        user_id = get_jwt_identity()
         
-        favorites = Favorite.query.filter_by(user_id=current_user_id).order_by(Favorite.created_at.desc()).all()
+        # Buscar favoritos do usuário
+        favorites = Favorite.query.filter_by(user_id=user_id).order_by(Favorite.created_at.desc()).all()
         
         return jsonify({
             'favorites': [fav.to_dict() for fav in favorites],
@@ -62,23 +72,33 @@ def get_favorites():
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        return jsonify({'error': f'Erro ao buscar favoritos: {str(e)}'}), 500
 
 @content_bp.route('/favorites', methods=['POST'])
 @jwt_required()
 def add_favorite():
     try:
-        current_user_id = get_jwt_identity()
+        user_id = get_jwt_identity()
         data = request.get_json()
         
-        if not data or not all(k in data for k in ('content_id', 'content_type', 'title')):
-            return jsonify({'error': 'content_id, content_type e title são obrigatórios'}), 400
+        # Validar dados obrigatórios
+        required_fields = ['content_type', 'content_id', 'title']
+        if not data or not all(k in data for k in required_fields):
+            return jsonify({'error': 'content_type, content_id e title são obrigatórios'}), 400
         
-        # Verificar se já está nos favoritos
+        content_type = data['content_type']
+        content_id = str(data['content_id'])
+        title = data['title']
+        
+        # Validar tipo de conteúdo
+        if content_type not in ['movie', 'tv', 'game']:
+            return jsonify({'error': 'content_type deve ser movie, tv ou game'}), 400
+        
+        # Verificar se já existe
         existing = Favorite.query.filter_by(
-            user_id=current_user_id,
-            content_id=data['content_id'],
-            content_type=data['content_type']
+            user_id=user_id,
+            content_type=content_type,
+            content_id=content_id
         ).first()
         
         if existing:
@@ -86,57 +106,36 @@ def add_favorite():
         
         # Criar favorito
         favorite = Favorite(
-            user_id=current_user_id,
-            content_id=data['content_id'],
-            content_type=data['content_type'],
-            title=data['title'],
+            user_id=user_id,
+            content_type=content_type,
+            content_id=content_id,
+            title=title,
             poster_url=data.get('poster_url'),
             rating=data.get('rating'),
-            release_date=data.get('release_date'),
             genres=json.dumps(data.get('genres', [])),
-            description=data.get('description')
+            release_date=data.get('release_date')
         )
         
         db.session.add(favorite)
-        
-        # Atualizar preferências do usuário
-        if data.get('genres'):
-            for genre in data['genres']:
-                preference = UserPreference.query.filter_by(
-                    user_id=current_user_id,
-                    genre=genre,
-                    content_type=data['content_type']
-                ).first()
-                
-                if preference:
-                    preference.weight += 0.1
-                else:
-                    preference = UserPreference(
-                        user_id=current_user_id,
-                        genre=genre,
-                        content_type=data['content_type'],
-                        weight=1.0
-                    )
-                    db.session.add(preference)
-        
         db.session.commit()
         
         return jsonify({
-            'message': 'Adicionado aos favoritos com sucesso!',
+            'message': 'Adicionado aos favoritos!',
             'favorite': favorite.to_dict()
         }), 201
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        return jsonify({'error': f'Erro ao adicionar favorito: {str(e)}'}), 500
 
 @content_bp.route('/favorites/<int:favorite_id>', methods=['DELETE'])
 @jwt_required()
 def remove_favorite(favorite_id):
     try:
-        current_user_id = get_jwt_identity()
+        user_id = get_jwt_identity()
         
-        favorite = Favorite.query.filter_by(id=favorite_id, user_id=current_user_id).first()
+        # Buscar favorito
+        favorite = Favorite.query.filter_by(id=favorite_id, user_id=user_id).first()
         
         if not favorite:
             return jsonify({'error': 'Favorito não encontrado'}), 404
@@ -144,26 +143,32 @@ def remove_favorite(favorite_id):
         db.session.delete(favorite)
         db.session.commit()
         
-        return jsonify({'message': 'Removido dos favoritos com sucesso!'}), 200
+        return jsonify({
+            'message': 'Removido dos favoritos!'
+        }), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        return jsonify({'error': f'Erro ao remover favorito: {str(e)}'}), 500
 
 @content_bp.route('/favorites/check', methods=['POST'])
 @jwt_required()
 def check_favorite():
     try:
-        current_user_id = get_jwt_identity()
+        user_id = get_jwt_identity()
         data = request.get_json()
         
-        if not data or not all(k in data for k in ('content_id', 'content_type')):
-            return jsonify({'error': 'content_id e content_type são obrigatórios'}), 400
+        if not data or not all(k in data for k in ['content_type', 'content_id']):
+            return jsonify({'error': 'content_type e content_id são obrigatórios'}), 400
         
+        content_type = data['content_type']
+        content_id = str(data['content_id'])
+        
+        # Verificar se existe
         favorite = Favorite.query.filter_by(
-            user_id=current_user_id,
-            content_id=data['content_id'],
-            content_type=data['content_type']
+            user_id=user_id,
+            content_type=content_type,
+            content_id=content_id
         ).first()
         
         return jsonify({
@@ -172,21 +177,93 @@ def check_favorite():
         }), 200
         
     except Exception as e:
-        return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
+        return jsonify({'error': f'Erro ao verificar favorito: {str(e)}'}), 500
 
-def get_mock_data(query):
-    """Dados mock para quando as APIs não estão disponíveis"""
-    mock_data = [
-        {
-            'id': 'mock_1',
-            'title': f'Resultado Mock para "{query}"',
-            'type': 'movie',
-            'poster_url': 'https://via.placeholder.com/300x450/8B5CF6/FFFFFF?text=Mock+Movie',
-            'rating': 8.5,
-            'release_date': '2023',
-            'genres': ['Ação', 'Aventura'],
-            'description': f'Este é um resultado mock para a busca "{query}". Em produção, este seria substituído por dados reais das APIs.'
-        }
-    ]
-    return mock_data
+@content_bp.route('/recommendations', methods=['GET'])
+@jwt_required()
+def get_recommendations():
+    try:
+        user_id = get_jwt_identity()
+        
+        # Buscar favoritos do usuário para gerar recomendações
+        favorites = Favorite.query.filter_by(user_id=user_id).all()
+        
+        if not favorites:
+            # Se não tem favoritos, retornar conteúdo popular
+            recommendations = []
+            
+            try:
+                popular_movies = tmdb_service.get_popular_movies()
+                recommendations.extend(popular_movies[:10])
+            except:
+                pass
+            
+            try:
+                popular_tv = tmdb_service.get_popular_tv_shows()
+                recommendations.extend(popular_tv[:10])
+            except:
+                pass
+            
+            try:
+                popular_games = igdb_service.get_popular_games()
+                recommendations.extend(popular_games[:10])
+            except:
+                pass
+            
+            return jsonify({
+                'recommendations': recommendations,
+                'based_on': 'popular_content'
+            }), 200
+        
+        # Gerar recomendações baseadas nos favoritos
+        recommendations = []
+        favorite_genres = []
+        
+        # Extrair gêneros dos favoritos
+        for fav in favorites:
+            if fav.genres:
+                try:
+                    genres = json.loads(fav.genres)
+                    favorite_genres.extend(genres)
+                except:
+                    pass
+        
+        # Contar gêneros mais frequentes
+        from collections import Counter
+        genre_counts = Counter(favorite_genres)
+        top_genres = [genre for genre, count in genre_counts.most_common(3)]
+        
+        # Buscar conteúdo similar
+        for genre in top_genres:
+            try:
+                similar_movies = tmdb_service.get_movies_by_genre(genre)
+                recommendations.extend(similar_movies[:5])
+            except:
+                pass
+            
+            try:
+                similar_tv = tmdb_service.get_tv_shows_by_genre(genre)
+                recommendations.extend(similar_tv[:5])
+            except:
+                pass
+        
+        # Remover duplicatas e favoritos já existentes
+        favorite_ids = {f"{fav.content_type}_{fav.content_id}" for fav in favorites}
+        unique_recommendations = []
+        seen_ids = set()
+        
+        for rec in recommendations:
+            rec_id = f"{rec['type']}_{rec['id']}"
+            if rec_id not in favorite_ids and rec_id not in seen_ids:
+                unique_recommendations.append(rec)
+                seen_ids.add(rec_id)
+        
+        return jsonify({
+            'recommendations': unique_recommendations[:20],
+            'based_on': 'user_preferences',
+            'favorite_genres': top_genres
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Erro ao gerar recomendações: {str(e)}'}), 500
 
