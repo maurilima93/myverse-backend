@@ -1,43 +1,32 @@
 import os
 from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
 from sqlalchemy import text
 from datetime import timedelta
-from src.extensions import db, jwt  # Importe de um único lugar
-
-print("=== Verificando instâncias ===")
-print(f"DB instance: {id(db)}")
-print(f"JWT instance: {id(jwt)}")
+from src.extensions import db, jwt
 
 def create_app():
     app = Flask(__name__)
-
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or \
-        f'postgresql://{os.environ.get("DB_USER")}:{os.environ.get("DB_PASSWORD")}@' \
-        f'{os.environ.get("DB_HOST")}:{os.environ.get("DB_PORT")}/{os.environ.get("DB_NAME")}?sslmode=require'
     
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # Inicialização ÚNICA
-    if not hasattr(app, 'extensions') or 'sqlalchemy' not in app.extensions:
-        db.init_app(app)
-        jwt.init_app(app)
-
-    # Configurações
+    # Configurações básicas
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-myverse-2024')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-    
-    # Configuração do banco de dados AWS RDS
-    db_host = os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')
+
+    # Configuração do banco (única)
     db_port = os.environ.get('DB_PORT', '5432')
-    db_name = os.environ.get('DB_NAME', 'postgres')
-    db_user = os.environ.get('DB_USER', 'admin1')
-    db_password = os.environ.get('DB_PASSWORD', 'EsNvDJNCydIdbKXcAZy5')
+    try:
+        db_port = int(db_port)
+    except ValueError:
+        db_port = 5432
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or \
+        f"postgresql://{os.environ.get('DB_USER', 'admin1')}:" \
+        f"{os.environ.get('DB_PASSWORD', 'EsNvDJNCydIdbKXcAZy5')}@" \
+        f"{os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')}:" \
+        f"{db_port}/" \
+        f"{os.environ.get('DB_NAME', 'postgres')}?sslmode=require"
     
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode=require'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
@@ -50,35 +39,31 @@ def create_app():
             'connect_timeout': 30
         }
     }
-    
-    # Configurar CORS para permitir requisições do frontend
-    CORS(app,
-     resources={
-         r"/api/*": {
-             "origins": [
-                 "https://myverse.com.br", 
-                 "https://www.myverse.com.br",
-                 "http://localhost:3000",  # Para desenvolvimento
-                 "http://localhost:5173",  # Vite dev server
-                 "http://127.0.0.1:3000",
-                 "http://127.0.0.1:5173"
-             ],
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
-             "supports_credentials": True,
-             "expose_headers": ["Content-Type"],
-             "max_age": 600
-         }
-     })
-    
-    # Inicializar extensões
+
+    # Configuração CORS (mantida igual)
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": [
+                "https://myverse.com.br", 
+                "https://www.myverse.com.br",
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173"
+            ],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+            "supports_credentials": True,
+            "expose_headers": ["Content-Type"],
+            "max_age": 600
+        }
+    })
+
+    # Inicialização ÚNICA das extensões
     db.init_app(app)
     jwt.init_app(app)
-    
-    # Importar modelos
-    from src.models.database import User, Favorite, ForumPost, ForumReply, Friendship
-    
-    # Importar e registrar blueprints
+
+    # Registrar blueprints
     from src.routes.auth import auth_bp
     from src.routes.content import content_bp
     from src.routes.forum import forum_bp
@@ -183,6 +168,5 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    app = create_app()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
