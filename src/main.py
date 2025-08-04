@@ -7,12 +7,16 @@ from sqlalchemy import text
 from datetime import timedelta
 
 # Inicializar extensões
-db = SQLAlchemy()
-jwt = JWTManager()
+#db = SQLAlchemy()
+#jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
     
+    # Inicialize as extensões DENTRO da função create_app
+    db = SQLAlchemy(app)  # Agora vinculado ao app
+    jwt = JWTManager(app)
+
     # Configurações
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-myverse-2024')
