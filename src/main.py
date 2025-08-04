@@ -52,7 +52,7 @@ def create_app():
                  "http://127.0.0.1:5173"
              ],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"],
+             "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
              "supports_credentials": True,
              "expose_headers": ["Content-Type"],
              "max_age": 600
@@ -73,11 +73,11 @@ def create_app():
     from src.routes.user import user_bp
     from src.routes.friends import friends_bp
     
-    app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(content_bp, url_prefix='/content')
-    app.register_blueprint(forum_bp, url_prefix='/forum')
-    app.register_blueprint(user_bp, url_prefix='/user')
-    app.register_blueprint(friends_bp, url_prefix='/friends')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(content_bp, url_prefix='/api/content')
+    app.register_blueprint(forum_bp, url_prefix='/api/forum')
+    app.register_blueprint(user_bp, url_prefix='/api/user')
+    app.register_blueprint(friends_bp, url_prefix='/api/friends')
     
     # Rota de health check
     @app.route('/health')
@@ -110,16 +110,18 @@ def create_app():
     def index():
         return jsonify({
             'message': 'MyVerse API',
-            'version': '1.1.0',
+            'version': '1.2.0-cors-fixed',
             'status': 'running',
             'endpoints': {
                 'health': '/health',
-                'auth': '/auth/*',
-                'content': '/content/*',
-                'forum': '/forum/*',
-                'user': '/user/*',
-                'friends': '/friends/*'
-            }
+                'auth': '/api/auth/*',
+                'content': '/api/content/*',
+                'forum': '/api/forum/*',
+                'user': '/api/user/*',
+                'friends': '/api/friends/*'
+            },
+            'cors': 'enabled',
+            'frontend_url': 'https://myverse.com.br'
         })
     
     # Rota de teste de conexão adicional
