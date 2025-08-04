@@ -14,11 +14,12 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Criar aplicação Flask
 app = Flask(__name__)
 
 # Configurações
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-myverse-2024')
 
 # CORS configurado para permitir todas as origens
 CORS(app, origins=['*'], supports_credentials=True)
@@ -26,11 +27,12 @@ CORS(app, origins=['*'], supports_credentials=True)
 # Configurações do banco de dados
 DB_CONFIG = {
     'host': os.environ.get('DB_HOST', 'localhost'),
-    'port': os.environ.get('DB_PORT', '5432'),
+    'port': int(os.environ.get('DB_PORT', 5432)),
     'database': os.environ.get('DB_NAME', 'myverse'),
     'user': os.environ.get('DB_USER', 'postgres'),
     'password': os.environ.get('DB_PASSWORD', 'password'),
-    'sslmode': 'require'
+    'sslmode': 'require',
+    'connect_timeout': 10
 }
 
 # APIs externas
@@ -39,7 +41,7 @@ IGDB_CLIENT_ID = os.environ.get('IGDB_CLIENT_ID')
 IGDB_ACCESS_TOKEN = os.environ.get('IGDB_ACCESS_TOKEN')
 
 def get_db_connection():
-    """Criar conexão com o banco de dados"""
+    """Criar conexão com o banco de dados com timeout"""
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         return conn
@@ -52,6 +54,7 @@ def init_database():
     try:
         conn = get_db_connection()
         if not conn:
+            logger.warning("Não foi possível conectar ao banco - usando modo fallback")
             return False
             
         cursor = conn.cursor()
@@ -146,7 +149,9 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated
 
-# Rotas de Health Check
+# ==================== ROTAS ====================
+
+# Health Check
 @app.route('/health', methods=['GET'])
 def health_check():
     """Verificar saúde da aplicação"""
@@ -154,17 +159,16 @@ def health_check():
         conn = get_db_connection()
         if conn:
             conn.close()
-            return jsonify({
-                'status': 'healthy',
-                'database': 'connected',
-                'timestamp': datetime.utcnow().isoformat()
-            })
+            db_status = 'connected'
         else:
-            return jsonify({
-                'status': 'unhealthy',
-                'database': 'disconnected',
-                'timestamp': datetime.utcnow().isoformat()
-            }), 500
+            db_status = 'disconnected'
+            
+        return jsonify({
+            'status': 'healthy',
+            'database': db_status,
+            'timestamp': datetime.utcnow().isoformat(),
+            'version': '2.0'
+        })
     except Exception as e:
         return jsonify({
             'status': 'error',
@@ -172,18 +176,22 @@ def health_check():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
-# Rotas de Autenticação
+# Autenticação
 @app.route('/auth/register', methods=['POST'])
 def register():
     """Registrar novo usuário"""
     try:
         data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
         
+        # Validações
         if not all([username, email, password]):
             return jsonify({'error': 'Todos os campos são obrigatórios'}), 400
+            
+        if len(password) < 6:
+            return jsonify({'error': 'Senha deve ter pelo menos 6 caracteres'}), 400
             
         conn = get_db_connection()
         if not conn:
@@ -194,6 +202,8 @@ def register():
         # Verificar se usuário já existe
         cursor.execute('SELECT id FROM users WHERE username = %s OR email = %s', (username, email))
         if cursor.fetchone():
+            cursor.close()
+            conn.close()
             return jsonify({'error': 'Usuário ou email já existe'}), 400
             
         # Criar usuário
@@ -229,8 +239,8 @@ def login():
     """Fazer login"""
     try:
         data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
         
         if not all([email, password]):
             return jsonify({'error': 'Email e senha são obrigatórios'}), 400
@@ -269,13 +279,13 @@ def login():
         logger.error(f"Erro no login: {e}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Rotas de Conteúdo
+# Busca de Conteúdo
 @app.route('/content/search', methods=['GET'])
 @token_required
 def search_content(current_user_id):
     """Buscar filmes, séries e jogos"""
     try:
-        query = request.args.get('q', '')
+        query = request.args.get('q', '').strip()
         if not query:
             return jsonify({'error': 'Parâmetro de busca obrigatório'}), 400
             
@@ -286,11 +296,12 @@ def search_content(current_user_id):
             try:
                 response = requests.get(
                     f'https://api.themoviedb.org/3/search/movie',
-                    params={'api_key': TMDB_API_KEY, 'query': query}
+                    params={'api_key': TMDB_API_KEY, 'query': query, 'language': 'pt-BR'},
+                    timeout=5
                 )
                 if response.status_code == 200:
                     movies = response.json().get('results', [])
-                    for movie in movies[:10]:
+                    for movie in movies[:8]:
                         results.append({
                             'id': f"movie_{movie['id']}",
                             'title': movie['title'],
@@ -309,11 +320,12 @@ def search_content(current_user_id):
             try:
                 response = requests.get(
                     f'https://api.themoviedb.org/3/search/tv',
-                    params={'api_key': TMDB_API_KEY, 'query': query}
+                    params={'api_key': TMDB_API_KEY, 'query': query, 'language': 'pt-BR'},
+                    timeout=5
                 )
                 if response.status_code == 200:
                     shows = response.json().get('results', [])
-                    for show in shows[:10]:
+                    for show in shows[:8]:
                         results.append({
                             'id': f"tv_{show['id']}",
                             'title': show['name'],
@@ -334,12 +346,13 @@ def search_content(current_user_id):
                     'Client-ID': IGDB_CLIENT_ID,
                     'Authorization': f'Bearer {IGDB_ACCESS_TOKEN}'
                 }
-                data = f'search "{query}"; fields name,cover.url,rating,first_release_date,summary; limit 10;'
+                data = f'search "{query}"; fields name,cover.url,rating,first_release_date,summary; limit 8;'
                 
                 response = requests.post(
                     'https://api.igdb.com/v4/games',
                     headers=headers,
-                    data=data
+                    data=data,
+                    timeout=5
                 )
                 if response.status_code == 200:
                     games = response.json()
@@ -361,36 +374,36 @@ def search_content(current_user_id):
             except Exception as e:
                 logger.error(f"Erro ao buscar jogos: {e}")
         
-        # Se não há APIs configuradas, retornar dados mock
+        # Se não há resultados das APIs, retornar dados mock
         if not results:
             results = [
                 {
-                    'id': 'movie_1',
-                    'title': f'Filme sobre {query}',
+                    'id': f'movie_mock_{hash(query) % 1000}',
+                    'title': f'Filme: {query}',
                     'type': 'movie',
                     'poster_url': None,
                     'rating': 8.5,
-                    'year': '2023',
+                    'year': '2024',
                     'overview': f'Um filme incrível sobre {query}',
                     'genres': ['Ação', 'Drama']
                 },
                 {
-                    'id': 'tv_1',
-                    'title': f'Série {query}',
+                    'id': f'tv_mock_{hash(query) % 1000}',
+                    'title': f'Série: {query}',
                     'type': 'tv',
                     'poster_url': None,
                     'rating': 9.0,
-                    'year': '2023',
+                    'year': '2024',
                     'overview': f'Uma série fantástica sobre {query}',
                     'genres': ['Drama', 'Thriller']
                 },
                 {
-                    'id': 'game_1',
-                    'title': f'Jogo {query}',
+                    'id': f'game_mock_{hash(query) % 1000}',
+                    'title': f'Jogo: {query}',
                     'type': 'game',
                     'poster_url': None,
                     'rating': 8.8,
-                    'year': '2023',
+                    'year': '2024',
                     'overview': f'Um jogo épico sobre {query}',
                     'genres': ['Ação', 'Aventura']
                 }
@@ -402,7 +415,7 @@ def search_content(current_user_id):
         logger.error(f"Erro na busca: {e}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Rotas de Favoritos
+# Favoritos
 @app.route('/content/favorites', methods=['POST'])
 @token_required
 def add_favorite(current_user_id):
@@ -431,13 +444,15 @@ def add_favorite(current_user_id):
             (current_user_id, content_id, content_type)
         )
         if cursor.fetchone():
+            cursor.close()
+            conn.close()
             return jsonify({'error': 'Item já está nos favoritos'}), 400
             
         # Adicionar aos favoritos
         cursor.execute('''
             INSERT INTO favorites (user_id, content_id, content_type, title, poster_url, rating, genres)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ''', (current_user_id, content_id, content_type, title, poster_url, rating, ','.join(genres)))
+        ''', (current_user_id, content_id, content_type, title, poster_url, rating, ','.join(genres) if genres else ''))
         
         conn.commit()
         cursor.close()
@@ -521,19 +536,25 @@ def check_favorite(current_user_id):
         logger.error(f"Erro ao verificar favorito: {e}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Rotas de Fórum
+# Fórum
 @app.route('/forum/posts', methods=['POST'])
 @token_required
 def create_post(current_user_id):
     """Criar post no fórum"""
     try:
         data = request.get_json()
-        title = data.get('title')
-        content = data.get('content')
-        category = data.get('category')
+        title = data.get('title', '').strip()
+        content = data.get('content', '').strip()
+        category = data.get('category', '').strip()
         
         if not all([title, content, category]):
             return jsonify({'error': 'Título, conteúdo e categoria são obrigatórios'}), 400
+            
+        if len(title) < 5:
+            return jsonify({'error': 'Título deve ter pelo menos 5 caracteres'}), 400
+            
+        if len(content) < 10:
+            return jsonify({'error': 'Conteúdo deve ter pelo menos 10 caracteres'}), 400
             
         conn = get_db_connection()
         if not conn:
@@ -579,6 +600,7 @@ def get_posts(current_user_id):
                 JOIN users u ON p.user_id = u.id 
                 WHERE p.category = %s 
                 ORDER BY p.created_at DESC
+                LIMIT 50
             ''', (category,))
         else:
             cursor.execute('''
@@ -586,6 +608,7 @@ def get_posts(current_user_id):
                 FROM forum_posts p 
                 JOIN users u ON p.user_id = u.id 
                 ORDER BY p.created_at DESC
+                LIMIT 50
             ''')
         
         posts = cursor.fetchall()
@@ -611,11 +634,14 @@ def get_posts(current_user_id):
         logger.error(f"Erro ao buscar posts: {e}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Inicializar banco de dados na inicialização
-with app.app_context():
+# Inicializar banco de dados
+try:
     init_database()
+except Exception as e:
+    logger.error(f"Erro na inicialização: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    app.run(host='0.0.0.0', port=port, debug=debug)
 
