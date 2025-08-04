@@ -3,6 +3,7 @@ from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from sqlalchemy import text
 from datetime import timedelta
 
 # Inicializar extensões
@@ -82,18 +83,26 @@ def create_app():
     @app.route('/health')
     def health_check():
         try:
-            # Testar conexão com banco
-            db.session.execute('SELECT 1')
+            # Testar conexão com banco usando text() para SQLAlchemy 2.0+
+            result = db.session.execute(text('SELECT 1'))
+            result.fetchone()  # Garantir que a query foi executada
+            db.session.commit()  # Fechar a transação
+            
             return jsonify({
                 'status': 'healthy',
                 'database': 'connected',
-                'message': 'MyVerse Backend is running!'
+                'message': 'MyVerse Backend is running!',
+                'version': '1.1.0'
             })
         except Exception as e:
+            # Log do erro para debugging
+            print(f"Health check error: {e}")
+            
             return jsonify({
                 'status': 'unhealthy',
                 'database': 'disconnected',
-                'error': str(e)
+                'error': str(e),
+                'message': 'Database connection failed'
             }), 500
     
     # Rota raiz
@@ -101,9 +110,50 @@ def create_app():
     def index():
         return jsonify({
             'message': 'MyVerse API',
-            'version': '1.0.0',
-            'status': 'running'
+            'version': '1.1.0',
+            'status': 'running',
+            'endpoints': {
+                'health': '/health',
+                'auth': '/auth/*',
+                'content': '/content/*',
+                'forum': '/forum/*',
+                'user': '/user/*',
+                'friends': '/friends/*'
+            }
         })
+    
+    # Rota de teste de conexão adicional
+    @app.route('/test-db')
+    def test_db():
+        try:
+            # Teste mais detalhado da conexão
+            result = db.session.execute(text('SELECT version()'))
+            version = result.fetchone()[0]
+            db.session.commit()
+            
+            return jsonify({
+                'status': 'success',
+                'database': 'connected',
+                'postgres_version': version,
+                'connection_info': {
+                    'host': db_host,
+                    'port': db_port,
+                    'database': db_name,
+                    'user': db_user
+                }
+            })
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'database': 'disconnected',
+                'error': str(e),
+                'connection_info': {
+                    'host': db_host,
+                    'port': db_port,
+                    'database': db_name,
+                    'user': db_user
+                }
+            }), 500
     
     # Criar tabelas
     with app.app_context():
@@ -122,4 +172,3 @@ if __name__ == '__main__':
     app = create_app()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
