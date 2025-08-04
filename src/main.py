@@ -7,6 +7,10 @@ from sqlalchemy import text
 from datetime import timedelta
 from src.extensions import db, jwt  # Importe de um único lugar
 
+print("=== Verificando instâncias ===")
+print(f"DB instance: {id(db)}")
+print(f"JWT instance: {id(jwt)}")
+
 def create_app():
     app = Flask(__name__)
 
@@ -16,9 +20,10 @@ def create_app():
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    # Inicialize as extensões
-    db.init_app(app)
-    jwt.init_app(app)
+    # Inicialização ÚNICA
+    if not hasattr(app, 'extensions') or 'sqlalchemy' not in app.extensions:
+        db.init_app(app)
+        jwt.init_app(app)
 
     # Configurações
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
