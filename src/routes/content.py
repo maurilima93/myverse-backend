@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from src.models.database import db, User, Favorite
+from src.models.database import User, Favorite
+from src.extensions import db
 from src.services.tmdb_service import TMDbService
 from src.services.igdb_service import IGDBService
 import json
