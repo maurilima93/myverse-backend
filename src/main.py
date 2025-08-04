@@ -7,22 +7,11 @@ from sqlalchemy import text
 from datetime import timedelta
 
 # Inicializar extensões
-#db = SQLAlchemy()
-#jwt = JWTManager()
+db = SQLAlchemy()
+jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
-
-    # 1. PRIMEIRO: Configurações do banco
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or \
-        f'postgresql://{os.environ.get("DB_USER")}:{os.environ.get("DB_PASSWORD")}@' \
-        f'{os.environ.get("DB_HOST")}:{os.environ.get("DB_PORT")}/{os.environ.get("DB_NAME")}?sslmode=require'
-    
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # 2. DEPOIS: Inicializar SQLAlchemy
-    db = SQLAlchemy(app)
-    jwt = JWTManager(app)
 
     # Configurações
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
@@ -32,9 +21,9 @@ def create_app():
     # Configuração do banco de dados AWS RDS
     db_host = os.environ.get('DB_HOST', 'personal-feed.c3yc0my6ywu9.sa-east-1.rds.amazonaws.com')
     db_port = os.environ.get('DB_PORT', '5432')
-    db_name = os.environ.get('DB_NAME', 'personal-feed')
+    db_name = os.environ.get('DB_NAME', 'postgres')
     db_user = os.environ.get('DB_USER', 'admin1')
-    db_password = os.environ.get('DB_PASSWORD', 'Ruffus11!')
+    db_password = os.environ.get('DB_PASSWORD', 'EsNvDJNCydIdbKXcAZy5')
     
     app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode=require'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
