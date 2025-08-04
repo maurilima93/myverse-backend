@@ -7,12 +7,23 @@ from sqlalchemy import text
 from datetime import timedelta
 
 # Inicializar extensões
-db = SQLAlchemy()
-jwt = JWTManager()
+#db = SQLAlchemy()
+#jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
+
+    # 1. PRIMEIRO: Configurações do banco
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or \
+        f'postgresql://{os.environ.get("DB_USER")}:{os.environ.get("DB_PASSWORD")}@' \
+        f'{os.environ.get("DB_HOST")}:{os.environ.get("DB_PORT")}/{os.environ.get("DB_NAME")}?sslmode=require'
     
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # 2. DEPOIS: Inicializar SQLAlchemy
+    db = SQLAlchemy(app)
+    jwt = JWTManager(app)
+
     # Configurações
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-myverse-2024')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-myverse-2024')
